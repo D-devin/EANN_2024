@@ -1,5 +1,5 @@
 # encoding=utf-8
-import cPickle as pickle
+import pickle as pickle
 import random
 from random import *
 import numpy as np
@@ -23,8 +23,8 @@ from gensim.models import Word2Vec
 
 def stopwordslist(filepath = '../Data/weibo/stop_words.txt'):
     stopwords = {}
-    for line in open(filepath, 'r').readlines():
-        line = unicode(line, "utf-8").strip()
+    for line in open(filepath, 'r',encoding='utf-8').readlines():
+        line = line.strip()
         stopwords[line] = 1
     #stopwords = [line.strip() for line in open(filepath, 'r', encoding='utf-8').readlines()]
     return stopwords
@@ -101,7 +101,7 @@ def write_data(flag, image, text_only):
         top_data = []
         for k, f in enumerate(file_list):
 
-            f = open(f, 'rb')
+            f = open(f, 'r',encoding='utf-8')
             if (k + 1) % 2 == 1:
                 label = 0  ### real is 0
             else:
@@ -131,7 +131,7 @@ def write_data(flag, image, text_only):
                     line_data.append(l.lower())
 
                 if (i + 1) % 3 == 0:
-                    l = clean_str_sst(unicode(l, "utf-8"))
+                    l = clean_str_sst(l.strip())
 
                     seg_list = jieba.cut_for_search(l)
                     new_seg_list = []
@@ -220,8 +220,8 @@ def write_data(flag, image, text_only):
 
                 label.append(post.iloc[i]['label'])
 
-        label = np.array(label, dtype=np.int)
-        ordered_event = np.array(ordered_event, dtype=np.int)
+        label = np.array(label, dtype=np.int32)
+        ordered_event = np.array(ordered_event, dtype=np.int32)
 
         print("Label number is " + str(len(label)))
         print("Rummor number is " + str(sum(label)))
@@ -281,7 +281,7 @@ def build_data_cv(data_folder, cv=10, clean_string=True):
             rev = []
             rev.append(line.strip())
             if clean_string:
-                orig_rev = clean_str(" ".join(rev))
+                orig_rev = clean_str_sst(" ".join(rev))
             else:
                 orig_rev = " ".join(rev).lower()
             words = set(orig_rev.split())
@@ -297,7 +297,7 @@ def build_data_cv(data_folder, cv=10, clean_string=True):
             rev = []
             rev.append(line.strip())
             if clean_string:
-                orig_rev = clean_str(" ".join(rev))
+                orig_rev = clean_str_sst(" ".join(rev))
             else:
                 orig_rev = " ".join(rev).lower()
             words = set(orig_rev.split())
@@ -336,7 +336,7 @@ def load_bin_vec(fname, vocab):
         header = f.readline()
         vocab_size, layer1_size = map(int, header.split())
         binary_len = np.dtype('float32').itemsize * layer1_size
-        for line in xrange(vocab_size):
+        for line in range(vocab_size):
             word = []
             while True:
                 ch = f.read(1)
@@ -391,7 +391,7 @@ def get_data(text_only):
     #
     word_embedding_path = "../Data/weibo/w2v.pickle"
 
-    w2v = pickle.load(open(word_embedding_path, 'rb'))
+    w2v = pickle.load(open(word_embedding_path, 'rb'),encoding='latin1')
     # print(temp)
     # #
     print("word2vec loaded!")

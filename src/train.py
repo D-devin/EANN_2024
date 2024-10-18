@@ -24,7 +24,6 @@ import torchvision.transforms as transforms
 from sklearn import metrics
 from sklearn.preprocessing import label_binarize
 import scipy.io as sio
-
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 class Rumor_Data(Dataset):
     def __init__(self, dataset):
@@ -46,20 +45,20 @@ class Rumor_Data(Dataset):
 
 
 class ReverseLayerF(Function):
-    #def __init__(self, lambd):
-        #self.lambd = lambd
-
-    #@staticmethod
-    def forward(self, x):
-        self.lambd = args.lambd
+    @staticmethod
+    def forward(ctx, x, lambd):
+        ctx.lambd = lambd
         return x.view_as(x)
 
-    #@staticmethod
-    def backward(self, grad_output):
-        return (grad_output * -self.lambd)
+    @staticmethod
+    def backward(ctx, grad_output):
+        # 返回的梯度数量应与输入数量相匹配
+        return grad_output, None  # 如果只有一个输入，第二个返回 None
 
-def grad_reverse(x):
-    return ReverseLayerF()(x)
+
+def grad_reverse(x, lambd):
+    return ReverseLayerF.apply(x, lambd)
+
 
 
 
@@ -80,7 +79,7 @@ class CNN_Fusion(nn.Module):
         self.social_size = 19
 
         # TEXT RNN
-        #循环神经网络LSTN
+
         self.embed = nn.Embedding(vocab_size, emb_dim)
         self.embed.weight = nn.Parameter(torch.from_numpy(W))
         self.lstm = nn.LSTM(self.lstm_size, self.lstm_size)
@@ -88,13 +87,12 @@ class CNN_Fusion(nn.Module):
         self.text_encoder = nn.Linear(emb_dim, self.hidden_size)
 
         ### TEXT CNN
-        #一层卷积核
         channel_in = 1
         filter_num = 20
         window_size = [1, 2, 3, 4]
         self.convs = nn.ModuleList([nn.Conv2d(channel_in, filter_num, (K, emb_dim)) for K in window_size])
         self.fc1 = nn.Linear(len(window_size) * filter_num, self.hidden_size)
-        #随机失活
+
         self.dropout = nn.Dropout(args.dropout)
 
         #IMAGE
@@ -128,6 +126,7 @@ class CNN_Fusion(nn.Module):
         #self.class_classifier.add_module('c_fc3', nn.Linear(100, 10))
         self.class_classifier.add_module('c_softmax', nn.Softmax(dim=1))
 
+        # 事件类型分类器
         ###Event Classifier
         self.domain_classifier = nn.Sequential()
         self.domain_classifier.add_module('d_fc1', nn.Linear(self.hidden_size, self.hidden_size))
@@ -136,6 +135,7 @@ class CNN_Fusion(nn.Module):
         self.domain_classifier.add_module('d_fc2', nn.Linear(self.hidden_size, self.event_num))
         self.domain_classifier.add_module('d_softmax', nn.Softmax(dim=1))
 
+        #图像与文本分类器
         ####Image and Text Classifier
         self.modal_classifier = nn.Sequential()
         self.modal_classifier.add_module('m_fc1', nn.Linear(self.hidden_size, self.hidden_size))
@@ -152,7 +152,7 @@ class CNN_Fusion(nn.Module):
         # The axes semantics are (num_layers, minibatch_size, hidden_dim)
         return (to_var(torch.zeros(1, batch_size, self.lstm_size)),
                 to_var(torch.zeros(1, batch_size, self.lstm_size)))
-
+    #核与池
     def conv_and_pool(self, x, conv):
         x = F.relu(conv(x)).squeeze(3)  # (sample number,hidden_dim, length)
         #x = F.avg_pool1d(x, x.size(2)).squeeze(2)
@@ -177,7 +177,7 @@ class CNN_Fusion(nn.Module):
         #class_output = self.class_classifier(text_image)
         class_output = self.class_classifier(text)
         ## Domain
-        reverse_feature = grad_reverse(text)
+        reverse_feature = grad_reverse(text,self.args.lambd)
         domain_output = self.domain_classifier(reverse_feature)
      
         return class_output, domain_output
@@ -283,7 +283,7 @@ def main(args):
 
     # Loss and Optimizer
     criterion = nn.CrossEntropyLoss()
-    #设置参数
+
     #Adadelta(params, lr=1.0, rho=0.9, eps=1e-06, weight_decay=0)
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, list(model.parameters())),
                                  lr= args.learning_rate)
@@ -324,7 +324,7 @@ def main(args):
             train_text,  train_mask, train_labels, event_labels = \
                 to_var(train_data[0]),  to_var(train_data[1]), \
                 to_var(train_labels), to_var(event_labels)
-            #张量转换为变量
+
             # Forward + Backward + Optimize
             optimizer.zero_grad()
 
@@ -335,26 +335,28 @@ def main(args):
             # zeros_label = to_var(zeros.type(torch.LongTensor))
 
             #modal_loss = criterion(text_output, ones_label)+ criterion(image_output, zeros_label)
-
+            train_labels = train_labels.long()
             class_loss = criterion(class_outputs, train_labels)
+            event_labels = event_labels.long()
             domain_loss = criterion(domain_outputs, event_labels)
+
             loss = class_loss + domain_loss
-            loss.backward()#反向传播
+            loss.backward()
             optimizer.step()
             _, argmax = torch.max(class_outputs, 1)
 
             cross_entropy = True
-            #准确率
+
             if True:
                 accuracy = (train_labels == argmax.squeeze()).float().mean()
             else:
                 _, labels = torch.max(train_labels, 1)
                 accuracy = (labels.squeeze() == argmax.squeeze()).float().mean()
 
-            class_cost_vector.append(class_loss.data[0])
+            class_cost_vector.append(class_loss.item())
             #domain_cost_vector.append(domain_loss.data[0])
-            cost_vector.append(loss.data[0])
-            acc_vector.append(accuracy.data[0])
+            cost_vector.append(loss.item())
+            acc_vector.append(accuracy.item())
             # if i == 0:
             #     train_score = to_np(class_outputs.squeeze())
             #     train_pred = to_np(argmax.squeeze())
@@ -364,23 +366,23 @@ def main(args):
             #     train_pred = np.concatenate((train_pred, to_np(argmax.squeeze())), axis=0)
             #     train_true = np.concatenate((train_true, to_np(train_labels.squeeze())), axis=0)
 
-        #评估
+
         model.eval()
         validate_acc_vector_temp = []
         for i, (validate_data, validate_labels, event_labels) in enumerate(validate_loader):
             validate_text,  validate_mask, validate_labels, event_labels = \
                 to_var(validate_data[0]),  to_var(validate_data[1]), \
                 to_var(validate_labels), to_var(event_labels)
-            
             validate_outputs, domain_outputs = model(validate_text, validate_mask)
             _, validate_argmax = torch.max(validate_outputs, 1)
+            validate_labels = validate_labels.long()
             vali_loss = criterion(validate_outputs, validate_labels)
             #domain_loss = criterion(domain_outputs, event_labels)
                 #_, labels = torch.max(validate_labels, 1)
             validate_accuracy = (validate_labels == validate_argmax.squeeze()).float().mean()
-            vali_cost_vector.append( vali_loss.data[0])
+            vali_cost_vector.append(vali_loss.item())
                 #validate_accuracy = (validate_labels == validate_argmax.squeeze()).float().mean()
-            validate_acc_vector_temp.append(validate_accuracy.data[0])
+            validate_acc_vector_temp.append(validate_accuracy.item())
         validate_acc = np.mean(validate_acc_vector_temp)
         valid_acc_vector.append(validate_acc)
         model.train()
@@ -473,7 +475,7 @@ def parse_arguments(parser):
     #    parser.add_argument('--num_classes', type = int, default = 10, help = '')
     parser.add_argument('--d_iter', type=int, default=3, help='')
     parser.add_argument('--batch_size', type=int, default=100, help='')
-    parser.add_argument('--num_epochs', type=int, default=100, help='')
+    parser.add_argument('--num_epochs', type=int, default=1, help='')
     parser.add_argument('--learning_rate', type=float, default=0.001, help='')
     parser.add_argument('--event_num', type=int, default=10, help='')
     return parser
@@ -505,7 +507,7 @@ def word2vec(post, word_id_map, W):
 def load_data(args):
     train, validate, test = process_data.get_data(args.text_only)
     #print(train[4][0])
-    word_vector_path = '../Data/weibo/word_embedding.pickle'
+    word_vector_path = '../data/weibo/word_embedding.pickle'
     f = open(word_vector_path, 'rb')
     weight = pickle.load(f)  # W, W2, word_idx_map, vocab
     W, W2, word_idx_map, vocab, max_len = weight[0], weight[1], weight[2], weight[3], weight[4]
@@ -539,7 +541,7 @@ def transform(event):
 
 if __name__ == '__main__':
     parse = argparse.ArgumentParser()
-    parser = parse_arguments(parse)#解释器
+    parser = parse_arguments(parse)
     train = '../Data/weibo/train.pickle'
     test = '../Data/weibo/test.pickle'
     output = '../Data/weibo/output/'

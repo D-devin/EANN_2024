@@ -4,7 +4,7 @@ import time, os
 # import random
 import process_data_weibo as process_data
 import copy
-import cPickle as pickle
+import pickle as pickle
 from random import sample
 import torchvision
 from sklearn.model_selection import train_test_split
@@ -24,6 +24,7 @@ import torchvision.transforms as transforms
 from sklearn import metrics
 from sklearn.preprocessing import label_binarize
 import scipy.io as sio
+os.chdir('./src')
 
 class Rumor_Data(Dataset):
     def __init__(self, dataset):
@@ -537,10 +538,10 @@ def transform(event):
 if __name__ == '__main__':
     parse = argparse.ArgumentParser()
     parser = parse_arguments(parse)
-    train = '../Data/weibo/train.pickle'
-    test = '../Data/weibo/test.pickle'
+    train = './Data/weibo/train.pickle'
+    test = './Data/weibo/test.pickle'
     output = '../Data/weibo/output/'
-    args = parser.parse_args([train, test, output])
+    #args = parser.parse_args([train, test, output])
     #    print(args)
-    main(args)
+    #main(args)
 
