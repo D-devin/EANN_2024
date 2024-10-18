@@ -69,12 +69,15 @@ class CNN_Fusion(nn.Module):
         self.args = args
 
         self.event_num = args.event_num
-
+        #cab词汇量大小
         vocab_size = args.vocab_size
+        #emb嵌入层维度
         emb_dim = args.embed_dim
-
+        #种类
         C = args.class_num
+        #隐藏层个数
         self.hidden_size = args.hidden_dim
+        #lstm嵌入层维度
         self.lstm_size = args.embed_dim
         self.social_size = 19
 
@@ -92,7 +95,6 @@ class CNN_Fusion(nn.Module):
         window_size = [1, 2, 3, 4]
         self.convs = nn.ModuleList([nn.Conv2d(channel_in, filter_num, (K, emb_dim)) for K in window_size])
         self.fc1 = nn.Linear(len(window_size) * filter_num, self.hidden_size)
-
         self.dropout = nn.Dropout(args.dropout)
 
         #IMAGE
@@ -453,10 +455,9 @@ def main(args):
 
 def parse_arguments(parser):
     parser.add_argument('training_file', type=str, metavar='<training_file>', help='')
-    #parser.add_argument('validation_file', type=str, metavar='<validation_file>', help='')
+    parser.add_argument('validation_file', type=str, metavar='<validation_file>', help='')
     parser.add_argument('testing_file', type=str, metavar='<testing_file>', help='')
     parser.add_argument('output_file', type=str, metavar='<output_file>', help='')
-
     parse.add_argument('--static', type=bool, default=True, help='')
     parser.add_argument('--sequence_length', type=int, default=28, help='')
     parser.add_argument('--class_num', type=int, default=2, help='')
@@ -467,12 +468,6 @@ def parse_arguments(parser):
     parser.add_argument('--filter_num', type=int, default=20, help='')
     parser.add_argument('--lambd', type=int, default= 1, help='')
     parser.add_argument('--text_only', type=bool, default= True, help='')
-
-    #    parser.add_argument('--sequence_length', type = int, default = 28, help = '')
-    #    parser.add_argument('--input_size', type = int, default = 28, help = '')
-    #    parser.add_argument('--hidden_size', type = int, default = 128, help = '')
-    #    parser.add_argument('--num_layers', type = int, default = 2, help = '')
-    #    parser.add_argument('--num_classes', type = int, default = 10, help = '')
     parser.add_argument('--d_iter', type=int, default=3, help='')
     parser.add_argument('--batch_size', type=int, default=100, help='')
     parser.add_argument('--num_epochs', type=int, default=1, help='')

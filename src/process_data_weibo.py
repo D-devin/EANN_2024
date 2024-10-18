@@ -40,7 +40,7 @@ def clean_str_sst(string):
 # import sys
 # reload(sys)
 # sys.setdefaultencoding("utf-8")
-#
+# readimage
 def read_image():
     image_list = {}
     file_list = ['../Data/weibo/nonrumor_images/', '../Data/weibo/rumor_images/']

@@ -80,6 +80,7 @@ class CNN_Fusion(nn.Module):
         self.social_size = 19
 
         # TEXT RNN
+        #文本特征提取器
         #循环神经网络LSTN
         self.embed = nn.Embedding(vocab_size, emb_dim)
         self.embed.weight = nn.Parameter(torch.from_numpy(W))
@@ -89,6 +90,7 @@ class CNN_Fusion(nn.Module):
 
         ### TEXT CNN
         #一层卷积核
+        #
         channel_in = 1
         filter_num = 20
         window_size = [1, 2, 3, 4]
@@ -98,6 +100,8 @@ class CNN_Fusion(nn.Module):
         self.dropout = nn.Dropout(args.dropout)
 
         #IMAGE
+        #视觉特征提取器
+        # 采用预训练的VGG19模型，在其最后的基础上增加了一个全连接层
         #hidden_size = args.hidden_dim
         vgg_19 = torchvision.models.vgg19(pretrained=True)
         for param in vgg_19.parameters():
@@ -129,6 +133,7 @@ class CNN_Fusion(nn.Module):
         self.class_classifier.add_module('c_softmax', nn.Softmax(dim=1))
 
         ###Event Classifier
+        #事件判断器 ，将文章分为K个事件，利用交叉熵来计算损失
         self.domain_classifier = nn.Sequential()
         self.domain_classifier.add_module('d_fc1', nn.Linear(self.hidden_size, self.hidden_size))
         #self.domain_classifier.add_module('d_bn1', nn.BatchNorm2d(self.hidden_size))
@@ -324,10 +329,10 @@ def main(args):
             train_text,  train_mask, train_labels, event_labels = \
                 to_var(train_data[0]),  to_var(train_data[1]), \
                 to_var(train_labels), to_var(event_labels)
-            #张量转换为变量
+            #张量转换为变量，将训练文本，训练mask，训练标签，事件标签转换为变量
             # Forward + Backward + Optimize
             optimizer.zero_grad()
-
+            #计算新闻类别
             class_outputs, domain_outputs = model(train_text, train_mask)
             # ones = torch.ones(text_output.size(0))
             # ones_label = to_var(ones.type(torch.LongTensor))
@@ -335,11 +340,11 @@ def main(args):
             # zeros_label = to_var(zeros.type(torch.LongTensor))
 
             #modal_loss = criterion(text_output, ones_label)+ criterion(image_output, zeros_label)
-
+            #类别下的损失函数
             class_loss = criterion(class_outputs, train_labels)
             domain_loss = criterion(domain_outputs, event_labels)
             loss = class_loss + domain_loss
-            loss.backward()#反向传播
+            loss.backward()
             optimizer.step()
             _, argmax = torch.max(class_outputs, 1)
 
@@ -371,9 +376,10 @@ def main(args):
             validate_text,  validate_mask, validate_labels, event_labels = \
                 to_var(validate_data[0]),  to_var(validate_data[1]), \
                 to_var(validate_labels), to_var(event_labels)
-            
+            #与上面同理训练集同理
             validate_outputs, domain_outputs = model(validate_text, validate_mask)
             _, validate_argmax = torch.max(validate_outputs, 1)
+            #损失函数的比较
             vali_loss = criterion(validate_outputs, validate_labels)
             #domain_loss = criterion(domain_outputs, event_labels)
                 #_, labels = torch.max(validate_labels, 1)
@@ -389,7 +395,7 @@ def main(args):
                 epoch + 1, args.num_epochs,  np.mean(cost_vector), np.mean(class_cost_vector), np.mean(vali_cost_vector),
                     np.mean(acc_vector),   validate_acc, ))
 
-
+        #检测正确率以及保存模型
         if validate_acc > best_validate_acc:
             best_validate_acc = validate_acc
             if not os.path.exists(args.output_file):
@@ -402,7 +408,7 @@ def main(args):
     #print ('Epoch: %d, Mean_Cost: %.4f, Duration: %.4f, Mean_Train_Acc: %.4f, Mean_Test_Acc: %.4f'
            #% (epoch + 1, np.mean(cost_vector), duration, np.mean(acc_vector), np.mean(test_acc_vector)))
 #best_validate_dir = args.output_file + 'baseline_text_weibo_GPU2_out.' + str(20) + '.pkl'
-
+    #测试模型
     # Test the Model
     print('testing model')
     model = CNN_Fusion(args, W)
@@ -521,13 +527,16 @@ def load_data(args):
     word_embedding, mask = word2vec(test['post_text'], word_idx_map, W)
     test['post_text'] = word_embedding
     test['mask']=mask
+
     #test[-2]= transform(test[-2])
     word_embedding, mask = word2vec(train['post_text'], word_idx_map, W)
     train['post_text'] = word_embedding
     train['mask'] = mask
+
     print("sequence length " + str(args.sequence_length))
     print("Train Data Size is "+str(len(train['post_text'])))
     print("Finished loading data ")
+    #载入数据的时候会先载入每个集合的词向量，然后会载入每个的词的标签
     return train, validate, test, W
 
 def transform(event):
