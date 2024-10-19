@@ -26,6 +26,7 @@ from sklearn.preprocessing import label_binarize
 import scipy.io as sio
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 class Rumor_Data(Dataset):
+    #数据转换类转换为张量
     def __init__(self, dataset):
         self.text = torch.from_numpy(np.array(dataset['post_text']))
         #self.social_context = torch.from_numpy(np.array(dataset['social_feature']))
@@ -69,20 +70,17 @@ class CNN_Fusion(nn.Module):
         self.args = args
 
         self.event_num = args.event_num
-        #cab词汇量大小
+
         vocab_size = args.vocab_size
-        #emb嵌入层维度
         emb_dim = args.embed_dim
-        #种类
+
         C = args.class_num
-        #隐藏层个数
         self.hidden_size = args.hidden_dim
-        #lstm嵌入层维度
         self.lstm_size = args.embed_dim
         self.social_size = 19
 
         # TEXT RNN
-
+        #文本处理的循环网络
         self.embed = nn.Embedding(vocab_size, emb_dim)
         self.embed.weight = nn.Parameter(torch.from_numpy(W))
         self.lstm = nn.LSTM(self.lstm_size, self.lstm_size)
@@ -95,9 +93,11 @@ class CNN_Fusion(nn.Module):
         window_size = [1, 2, 3, 4]
         self.convs = nn.ModuleList([nn.Conv2d(channel_in, filter_num, (K, emb_dim)) for K in window_size])
         self.fc1 = nn.Linear(len(window_size) * filter_num, self.hidden_size)
+
         self.dropout = nn.Dropout(args.dropout)
 
         #IMAGE
+        #图像处理的VGG19
         #hidden_size = args.hidden_dim
         vgg_19 = torchvision.models.vgg19(pretrained=True)
         for param in vgg_19.parameters():
@@ -111,12 +111,15 @@ class CNN_Fusion(nn.Module):
         self.image_encoder = nn.Linear(self.hidden_size, self.hidden_size)
 
         ###social context
+        #分类器
         self.social = nn.Linear(self.social_size, self.hidden_size)
 
         ##ATTENTION
+        #注意力机制（吧
         self.attention_layer = nn.Linear(self.hidden_size, emb_dim)
 
         ## Class  Classifier
+        #分类器
         self.class_classifier = nn.Sequential()
         self.class_classifier.add_module('c_fc1',  nn.Linear(self.hidden_size, 2))
         #self.class_classifier.add_module('c_bn1', nn.BatchNorm2d(100))
@@ -128,8 +131,8 @@ class CNN_Fusion(nn.Module):
         #self.class_classifier.add_module('c_fc3', nn.Linear(100, 10))
         self.class_classifier.add_module('c_softmax', nn.Softmax(dim=1))
 
-        # 事件类型分类器
         ###Event Classifier
+        #事件分类器
         self.domain_classifier = nn.Sequential()
         self.domain_classifier.add_module('d_fc1', nn.Linear(self.hidden_size, self.hidden_size))
         #self.domain_classifier.add_module('d_bn1', nn.BatchNorm2d(self.hidden_size))
@@ -137,8 +140,8 @@ class CNN_Fusion(nn.Module):
         self.domain_classifier.add_module('d_fc2', nn.Linear(self.hidden_size, self.event_num))
         self.domain_classifier.add_module('d_softmax', nn.Softmax(dim=1))
 
-        #图像与文本分类器
         ####Image and Text Classifier
+        #图像和文本分类器
         self.modal_classifier = nn.Sequential()
         self.modal_classifier.add_module('m_fc1', nn.Linear(self.hidden_size, self.hidden_size))
         # self.domain_classifier.add_module('d_bn1', nn.BatchNorm2d(self.hidden_size))
@@ -154,8 +157,9 @@ class CNN_Fusion(nn.Module):
         # The axes semantics are (num_layers, minibatch_size, hidden_dim)
         return (to_var(torch.zeros(1, batch_size, self.lstm_size)),
                 to_var(torch.zeros(1, batch_size, self.lstm_size)))
-    #核与池
+
     def conv_and_pool(self, x, conv):
+        #核与池
         x = F.relu(conv(x)).squeeze(3)  # (sample number,hidden_dim, length)
         #x = F.avg_pool1d(x, x.size(2)).squeeze(2)
         x = F.max_pool1d(x, x.size(2)).squeeze(2)
@@ -184,15 +188,16 @@ class CNN_Fusion(nn.Module):
      
         return class_output, domain_output
 
+#显卡检验
 def to_var(x):
     if torch.cuda.is_available():
         x = x.cuda()
     return Variable(x)
 
-
+#转数组
 def to_np(x):
     return x.data.cpu().numpy()
-
+#选择器
 def select(train, selec_indices):
     temp = []
     for i in range(len(train)):
@@ -243,7 +248,7 @@ def main(args):
     #                              batch_size=32,
     #                              shuffle=True,
     #                              num_workers=2)
-
+    #载入数据
     # MNIST Dataset
     train, validation, test, W = load_data(args)
 
@@ -262,7 +267,7 @@ def main(args):
 
 
 
-
+    #数据读取类
     # Data Loader (Input Pipeline)
     train_loader = DataLoader(dataset=train_dataset,
                               batch_size=args.batch_size,
@@ -285,7 +290,7 @@ def main(args):
 
     # Loss and Optimizer
     criterion = nn.CrossEntropyLoss()
-
+    #参数设置
     #Adadelta(params, lr=1.0, rho=0.9, eps=1e-06, weight_decay=0)
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, list(model.parameters())),
                                  lr= args.learning_rate)
@@ -293,7 +298,7 @@ def main(args):
                                   #lr=args.learning_rate)
     #scheduler = StepLR(optimizer, step_size= 10, gamma= 1)
 
-
+    #最佳设置
     iter_per_epoch = len(train_loader)
     print("loader size " + str(len(train_loader)))
     best_validate_acc = 0.000
@@ -303,12 +308,13 @@ def main(args):
     print('training model')
     adversarial = True
     # Train the Model
+    #训练模型
     for epoch in range(args.num_epochs):
 
         p = float(epoch) / 100
         #lambd = 2. / (1. + np.exp(-10. * p)) - 1
         lr = 0.001
-
+        #参数加载
         optimizer.lr = lr
         #rgs.lambd = lambd
 
@@ -321,7 +327,7 @@ def main(args):
         test_acc_vector = []
         vali_cost_vector = []
         test_cost_vector = []
-
+        #读取训练集的数据，数据文本，标签，事件标签，0是文本，1是图片
         for i, (train_data, train_labels, event_labels) in enumerate(train_loader):
             train_text,  train_mask, train_labels, event_labels = \
                 to_var(train_data[0]),  to_var(train_data[1]), \
@@ -329,7 +335,7 @@ def main(args):
 
             # Forward + Backward + Optimize
             optimizer.zero_grad()
-
+            #获得类输出
             class_outputs, domain_outputs = model(train_text, train_mask)
             # ones = torch.ones(text_output.size(0))
             # ones_label = to_var(ones.type(torch.LongTensor))
@@ -341,20 +347,20 @@ def main(args):
             class_loss = criterion(class_outputs, train_labels)
             event_labels = event_labels.long()
             domain_loss = criterion(domain_outputs, event_labels)
-
+            #做验证
             loss = class_loss + domain_loss
             loss.backward()
             optimizer.step()
             _, argmax = torch.max(class_outputs, 1)
 
             cross_entropy = True
-
+            #计算正确率
             if True:
                 accuracy = (train_labels == argmax.squeeze()).float().mean()
             else:
                 _, labels = torch.max(train_labels, 1)
                 accuracy = (labels.squeeze() == argmax.squeeze()).float().mean()
-
+            #每轮加进去
             class_cost_vector.append(class_loss.item())
             #domain_cost_vector.append(domain_loss.data[0])
             cost_vector.append(loss.item())
@@ -368,14 +374,17 @@ def main(args):
             #     train_pred = np.concatenate((train_pred, to_np(argmax.squeeze())), axis=0)
             #     train_true = np.concatenate((train_true, to_np(train_labels.squeeze())), axis=0)
 
-
+        #验证模式  
         model.eval()
         validate_acc_vector_temp = []
+        #读取验证集的数据，数据文本，标签，事件标签，0是文本，1是图
         for i, (validate_data, validate_labels, event_labels) in enumerate(validate_loader):
             validate_text,  validate_mask, validate_labels, event_labels = \
                 to_var(validate_data[0]),  to_var(validate_data[1]), \
                 to_var(validate_labels), to_var(event_labels)
+            #与上文同理
             validate_outputs, domain_outputs = model(validate_text, validate_mask)
+            #同理
             _, validate_argmax = torch.max(validate_outputs, 1)
             validate_labels = validate_labels.long()
             vali_loss = criterion(validate_outputs, validate_labels)
@@ -388,12 +397,13 @@ def main(args):
         validate_acc = np.mean(validate_acc_vector_temp)
         valid_acc_vector.append(validate_acc)
         model.train()
+        #训练模式
         print ('Epoch [%d/%d],  Loss: %.4f, Class Loss: %.4f, validate loss: %.4f, Train_Acc: %.4f,  Validate_Acc: %.4f.'
                 % (
                 epoch + 1, args.num_epochs,  np.mean(cost_vector), np.mean(class_cost_vector), np.mean(vali_cost_vector),
                     np.mean(acc_vector),   validate_acc, ))
 
-
+        #保存模型
         if validate_acc > best_validate_acc:
             best_validate_acc = validate_acc
             if not os.path.exists(args.output_file):
@@ -406,7 +416,7 @@ def main(args):
     #print ('Epoch: %d, Mean_Cost: %.4f, Duration: %.4f, Mean_Train_Acc: %.4f, Mean_Test_Acc: %.4f'
            #% (epoch + 1, np.mean(cost_vector), duration, np.mean(acc_vector), np.mean(test_acc_vector)))
 #best_validate_dir = args.output_file + 'baseline_text_weibo_GPU2_out.' + str(20) + '.pkl'
-
+    #测试
     # Test the Model
     print('testing model')
     model = CNN_Fusion(args, W)
@@ -418,6 +428,7 @@ def main(args):
     test_score = []
     test_pred = []
     test_true = []
+    #读取测试集的数据，数据文本，标签，事件标签，0是文本，1是图
     for i, (test_data, test_labels, event_labels) in enumerate(test_loader):
         test_text,  test_mask, test_labels = to_var(
             test_data[0]), to_var(test_data[1]), to_var(test_labels)
@@ -452,12 +463,13 @@ def main(args):
     print('Saving results')
    
 
-
+#参数设置函数
 def parse_arguments(parser):
     parser.add_argument('training_file', type=str, metavar='<training_file>', help='')
-    parser.add_argument('validation_file', type=str, metavar='<validation_file>', help='')
+    #parser.add_argument('validation_file', type=str, metavar='<validation_file>', help='')
     parser.add_argument('testing_file', type=str, metavar='<testing_file>', help='')
     parser.add_argument('output_file', type=str, metavar='<output_file>', help='')
+
     parse.add_argument('--static', type=bool, default=True, help='')
     parser.add_argument('--sequence_length', type=int, default=28, help='')
     parser.add_argument('--class_num', type=int, default=2, help='')
@@ -468,15 +480,21 @@ def parse_arguments(parser):
     parser.add_argument('--filter_num', type=int, default=20, help='')
     parser.add_argument('--lambd', type=int, default= 1, help='')
     parser.add_argument('--text_only', type=bool, default= True, help='')
+
+    #    parser.add_argument('--sequence_length', type = int, default = 28, help = '')
+    #    parser.add_argument('--input_size', type = int, default = 28, help = '')
+    #    parser.add_argument('--hidden_size', type = int, default = 128, help = '')
+    #    parser.add_argument('--num_layers', type = int, default = 2, help = '')
+    #    parser.add_argument('--num_classes', type = int, default = 10, help = '')
     parser.add_argument('--d_iter', type=int, default=3, help='')
     parser.add_argument('--batch_size', type=int, default=100, help='')
-    parser.add_argument('--num_epochs', type=int, default=1, help='')
+    parser.add_argument('--num_epochs', type=int, default=100, help='')
     parser.add_argument('--learning_rate', type=float, default=0.001, help='')
     parser.add_argument('--event_num', type=int, default=10, help='')
     return parser
 
 
-
+#词向量转换函数
 def word2vec(post, word_id_map, W):
     word_embedding = []
     mask = []
@@ -500,8 +518,10 @@ def word2vec(post, word_id_map, W):
     return word_embedding, mask
 
 def load_data(args):
+    #加载数据，调用隔壁函数加载的是dataframe
     train, validate, test = process_data.get_data(args.text_only)
     #print(train[4][0])
+    #读取词向量
     word_vector_path = '../data/weibo/word_embedding.pickle'
     f = open(word_vector_path, 'rb')
     weight = pickle.load(f)  # W, W2, word_idx_map, vocab
@@ -509,7 +529,7 @@ def load_data(args):
     args.vocab_size = len(vocab)
     args.sequence_len = max_len
     print("translate data to embedding")
-
+    #数据集与词向量的转换
     word_embedding, mask = word2vec(validate['post_text'], word_idx_map, W)
     validate['post_text'] = word_embedding
     validate['mask'] = mask

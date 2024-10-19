@@ -21,6 +21,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import os.path
 from gensim.models import Word2Vec
 
+#加载停用词表
 def stopwordslist(filepath = '../Data/weibo/stop_words.txt'):
     stopwords = {}
     for line in open(filepath, 'r',encoding='utf-8').readlines():
@@ -29,6 +30,7 @@ def stopwordslist(filepath = '../Data/weibo/stop_words.txt'):
     #stopwords = [line.strip() for line in open(filepath, 'r', encoding='utf-8').readlines()]
     return stopwords
 
+#删除符号
 def clean_str_sst(string):
     """
     Tokenization/string cleaning for the SST dataset
@@ -42,6 +44,9 @@ def clean_str_sst(string):
 # sys.setdefaultencoding("utf-8")
 # readimage
 def read_image():
+    """
+    读取图片，进行格式化处理，将图片与id对应，且返回含有图片向量的列表
+    """
     image_list = {}
     file_list = ['../Data/weibo/nonrumor_images/', '../Data/weibo/rumor_images/']
     for path in file_list:
@@ -76,7 +81,7 @@ def write_txt(data):
     f.close()
 text_dict = {}
 def write_data(flag, image, text_only):
-
+    #读取文件返回dataframe
     def read_post(flag):
         stop_words = stopwordslist()
         pre_path = "../Data/weibo/tweets/"
@@ -89,16 +94,17 @@ def write_data(flag, image, text_only):
         elif flag == "test":
             id = pickle.load(open("../Data/weibo/test_id.pickle", 'rb'))
 
-
         post_content = []
         labels = []
         image_ids = []
         twitter_ids = []
         data = []
+        #datframe的列
         column = ['post_id', 'image_id', 'original_post', 'post_text', 'label', 'event_label']
         key = -1
         map_id = {}
         top_data = []
+        #读取文件筛词，利用了jieba还有去符号，可以不看
         for k, f in enumerate(file_list):
 
             f = open(f, 'r',encoding='utf-8')
@@ -112,20 +118,12 @@ def write_data(flag, image, text_only):
             top_line_data = []
 
             for i, l in enumerate(f.readlines()):
-                # key += 1
-
-                # if int(key /3) in index:
-                # print(key/3)
-                # continue
 
 
                 if (i + 1) % 3 == 1:
                     line_data = []
                     twitter_id = l.split('|')[0]
                     line_data.append(twitter_id)
-
-
-
                 if (i + 1) % 3 == 2:
 
                     line_data.append(l.lower())
@@ -151,15 +149,10 @@ def write_data(flag, image, text_only):
                             event = map_id[event]
                         else:
                             event = map_id[event]
-
                         line_data.append(event)
-
                         data.append(line_data)
 
-
             f.close()
-            # print(data)
-            #     return post_content
         
         data_df = pd.DataFrame(np.array(data), columns=column)
         write_txt(top_data)
@@ -170,12 +163,14 @@ def write_data(flag, image, text_only):
     print("Original post length is " + str(len(post_content)))
     print("Original data frame is " + str(post.shape))
 
-
+    #两个废弃函数
     def find_most(db):
+        #寻找最多
         maxcount = max(len(v) for v in db.values())
         return [k for k, v in db.items() if len(v) == maxcount]
 
     def select(train, selec_indices):
+        #进行选择
         temp = []
         for i in range(len(train)):
             ele = list(train[i])
@@ -183,12 +178,6 @@ def write_data(flag, image, text_only):
             #   temp.append(np.array(train[i])[selec_indices])
         return temp
 
-#     def balance_event(data, event_list):
-#         id = find_most(event_list)[0]
-#         remove_indice = random.sample(range(min(event_list[id]), \
-#                                             max(event_list[id])), int(len(event_list[id]) * 0.9))
-#         select_indices = np.delete(range(len(data[0])), remove_indice)
-#         return select(data, select_indices)
 
     def paired(text_only = False):
         ordered_image = []
@@ -199,14 +188,14 @@ def write_data(flag, image, text_only):
         post_id = []
         image_id_list = []
         #image = []
-
+        #将图片和文本的id对应然后加入到data中
         image_id = ""
         for i, id in enumerate(post['post_id']):
             for image_id in post.iloc[i]['image_id'].split('|'):
                 image_id = image_id.split("/")[-1].split(".")[0]
                 if image_id in image:
                     break
-
+            #处理对应的图片与帖子对应
             if text_only or image_id in image:
                 if not text_only:
                     image_name = image_id
@@ -222,7 +211,7 @@ def write_data(flag, image, text_only):
 
         label = np.array(label, dtype=np.int32)
         ordered_event = np.array(ordered_event, dtype=np.int32)
-
+        #输出处理好的数量
         print("Label number is " + str(len(label)))
         print("Rummor number is " + str(sum(label)))
         print("Non rummor is " + str(len(label) - sum(label)))
@@ -257,7 +246,8 @@ def write_data(flag, image, text_only):
 
 
 def load_data(train, validate, test):
-    vocab = defaultdict(float)
+    vocab = defaultdict(float)#创立字典
+    #合并
     all_text = list(train['post_text']) + list(validate['post_text'])+list(test['post_text'])
     for sentence in all_text:
         for word in sentence:
@@ -271,6 +261,7 @@ def load_data(train, validate, test):
 def build_data_cv(data_folder, cv=10, clean_string=True):
     """
     Loads data and split into 10 folds.
+    将数据分成10个交叉验证的集合
     """
     revs = []
     pos_file = data_folder[0]
@@ -314,6 +305,7 @@ def build_data_cv(data_folder, cv=10, clean_string=True):
 def get_W(word_vecs, k=32):
     """
     Get word matrix. W[i] is the vector for word indexed by i
+    用于从给定的词向量字典word_vecs中提取词向量矩阵W和词索引映射word_idx_map
     """
     # vocab_size = len(word_vecs)
     word_idx_map = dict()
@@ -330,13 +322,14 @@ def get_W(word_vecs, k=32):
 def load_bin_vec(fname, vocab):
     """
     Loads 300x1 word vecs from Google (Mikolov) word2vec
+    预载google的词向量
     """
     word_vecs = {}
     with open(fname, "rb") as f:
         header = f.readline()
         vocabte_size, layer1_size = map(int, header.split())
         binary_len = np.dtype('float32').itemsize * layer1_size
-        for line in range(vocab_size):
+        for line in range(vocabte_size):
             word = []
             while True:
                 ch = f.read(1)
@@ -356,7 +349,9 @@ def add_unknown_words(word_vecs, vocab, min_df=1, k=32):
     """
     For words that occur in at least min_df documents, create a separate word vector.
     0.25 is chosen so the unknown vectors have (approximately) same variance as pre-trained ones
-    """
+    用于为在文档中出现频率不低于min_df的词汇创建单独的词向量
+     0.25是选择的，所以未知向量具有（大约）与预训练向量相同的方差
+     """
     for word in vocab:
         if word not in word_vecs and vocab[word] >= min_df:
             word_vecs[word] = np.random.uniform(-0.25, 0.25, k)
@@ -365,35 +360,33 @@ def add_unknown_words(word_vecs, vocab, min_df=1, k=32):
 
 def get_data(text_only):
     #text_only = False
-
+    """
+    与外部的接口，最后返回dataframe。
+    """
     if text_only:
         print("Text only")
         image_list = []
     else:
         print("Text and image")
         image_list = read_image()
-
+    #读取数据获得dataframe
     train_data = write_data("train", image_list, text_only)
     valiate_data = write_data("validate", image_list, text_only)
     test_data = write_data("test", image_list, text_only)
-
     print("loading data...")
+
     # w2v_file = '../Data/GoogleNews-vectors-negative300.bin'
+    #合并文本+获取频率热词
     vocab, all_text = load_data(train_data, valiate_data, test_data)
     # print(str(len(all_text)))
-
     print("number of sentences: " + str(len(all_text)))
     print("vocab size: " + str(len(vocab)))
     max_l = len(max(all_text, key=len))
     print("max sentence length: " + str(max_l))
 
-    #
-    #
+    #加载预载的词向量
     word_embedding_path = "../Data/weibo/w2v.pickle"
-
     w2v = pickle.load(open(word_embedding_path, 'rb'),encoding='latin1')
-    # print(temp)
-    # #
     print("word2vec loaded!")
     print("num words already in word2vec: " + str(len(w2v)))
     # w2v = add_unknown_words(w2v, vocab)
@@ -423,16 +416,12 @@ def get_data(text_only):
     #         center_count[i] += 1
     # print(center_count)
     # train_data['event_label'] = y
-
-    #
-    print("word2vec loaded!")
-    print("num words already in word2vec: " + str(len(w2v)))
+    #加入本次的词到词向量中
     add_unknown_words(w2v, vocab)
     W, word_idx_map = get_W(w2v)
-    # # rand_vecs = {}
-    # # add_unknown_words(rand_vecs, vocab)
     W2 = rand_vecs = {}
     w_file = open("../Data/weibo/word_embedding.pickle", "wb")
+    #写入文件保存
     pickle.dump([W, W2, word_idx_map, vocab, max_l], w_file)
     w_file.close()
     return train_data, valiate_data, test_data
