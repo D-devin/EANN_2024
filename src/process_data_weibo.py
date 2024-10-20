@@ -255,9 +255,6 @@ def load_data(train, validate, test):
     return vocab, all_text
 
 
-
-
-
 def build_data_cv(data_folder, cv=10, clean_string=True):
     """
     Loads data and split into 10 folds.

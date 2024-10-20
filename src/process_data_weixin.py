@@ -1,12 +1,25 @@
-import torch
-import torch.nn as nn
-import pandas as pd
-import numpy as np
-import jieba
-import sklearn
-import os
-import re
+# encoding=utf-8
+import pickle as pickle
 import random
+from random import *
+import numpy as np
+import torchvision
+from torchvision import datasets, models, transforms
+import os
+from collections import defaultdict
+import sys, re
+import pandas as pd
+from PIL import Image
+import math
+from types import *
+from gensim.models import Word2Vec
+import jieba
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
+import os.path
+import gensim
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ## 清洗（洗去标点，分词，去掉停用词），图片转化，文本与图像匹配，合并文本获取词频率，获取词向量将这次数据集的词向量加入到其中
 ## 最后返回数据集的data，将新的词向量保存。
@@ -40,21 +53,31 @@ def images_process (image_url):
     print("image_length:"+str(len(image_list)))
     return iamge_list
     
-def word_cab(data_clear,clear_index):
-    """
-    将词表id化
-    """
-    retun 
-
-def text_to_word2vec(word):
+def get_w(model, word_text):
+        # vocab_size = len(word_vecs)
+    W = np.zeros(shape=(len() + 1, k), dtype='float32')
+    W[0] = np.zeros(k, dtype='float32')
+    
+    for word in word_text:
+        W[i] = model[word]
+    return W
+def text_to_word2vec(model_path,save_path,cab,min_df):
     """
     将词表转化为词向量
     然后保存词向量表为文件
-    格式暂不定
+    采用gensim读取
+    加入的新词表的最低频率为1
     """
-    pass
+    print("loding_word2vec!")
+    model = gensim.models.KeyedVectors.load_word2vec_format(model_path, binary=False)
+    print("information",models)
+    word_vec = gensim.models.KeyedVectors(vector_size=model.vector_size)
+    for word in cab:
+        if cab[word]>= min_df:
+            word_vec.add_word(word,model[word])
+    word_vec.save_word2vec_format(save_path+'word2vec.bin', binary=True)
 
-def get_w(word2vec):
+def word_cab(data,clear_index):
     pass
    
 def get_data (path):
@@ -69,6 +92,7 @@ def get_data (path):
     val_id = []
     val_true = 500
     #需要清洁的列表
+    index = ['id','Title','news_text','text_consent','label','clear_text','clear_title','clear_consent','image()']
     clear_index = ['Title','news_text','text_consent']
     data_csv = pd.read_csv(path = path,encoding= 'utf-8')
     #复制一个副本方便做处理避免表格过大
@@ -79,6 +103,7 @@ def get_data (path):
         data_clear[i] = data_clear[i].apply(lambda x: ','.join(jieba.cut_for_search(x)))    
     #图像列表，先导入图片然后返回图片数据，最后加入到data中
     images = images_process(data_csv['image_path'].tolist())
+
     """
     目前暂定这样等会，看看哪些地方比较构式的地方等会再改
     """
@@ -86,21 +111,7 @@ def get_data (path):
     word_cab,all_text = word_cab(data_clear,clear_index)
 
     #随机划分训练集和测试集
-    id = random.shuffle(list(range(data_csv.index)))
-    val_num = 0
-    val_data = pd.DataFrame()
-    for i in range(id):
-        if data_csv['news_tag'][i] == 1 and val_num<=(val_true*3):
-            val_data = val_data.append(data_csv.iloc[i], ignore_index=True)
-            val_num +=1
-        if data_csv['news_tag'][i] == 2 and val_num<=(val_true*3):
-            val_data = val_data.append(data_csv.iloc[i], ignore_index=True)
-            val_num +=1
-        if val_num == val_true*3:
-            break
-    train_data = data_csv.drop(val_data.index)
-    train_data.save('train.csv')
-    val_data.save('val.csv')
+    
     return train_data,val_data,word_cab,all_text
        
 def read_data(text_only):
@@ -128,16 +139,14 @@ def read_data(text_only):
     print("max sentence length: " + str(max_l))    
     #加载词向量
     word_enbedding_path = 'null'
-    word2vec = load(path)
+    save_path = 'null'
     print("word2vec loaded!")
-
-    print("num words already in word2vec: " + str(len(word2vec)))
-    text_to_word2vec(word2vec, word_cab)
-    w, word_index_map = get_w(word2vec)
-    w2 = rand_vecs = {}
-    w_file = open()
-    #文件写入
-    w_file.close()
-    return train_data,val_data
+    text_to_word2vec(word_enbedding_path,save_path,word_cab)
+    return train_data,val_data,all_text
    
   
+word_enbedding_path = r'E:\fakenews\sgns.target.word-word.dynwin5.thr10.neg5.dim300.iter5'
+model = gensim.models.KeyedVectors.load_word2vec_format(word_enbedding_path, binary=False)
+print("information",models)
+word_indice = model.wv.index2word
+print("word_indice",word_indice)
