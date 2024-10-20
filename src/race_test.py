@@ -478,7 +478,7 @@ def load_data(args):
     #读取词向量
     word_vector_path = 'null'
     model = gensim.models.KeyedVectors.load_word2vec_format(word_vector_path, binary=True)
-    word_vectors = process_data_weixin.get_w(model, word_text)
+    word_vectors,word_index_map = process_data_weixin.get_w(model, word_text)
     args.vocab_size = len(model.vocab)
     args.sequence_len = 150
     print("translate data to embedding")

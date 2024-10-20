@@ -53,29 +53,32 @@ def images_process (image_url):
     print("image_length:"+str(len(image_list)))
     return iamge_list
     
-def get_w(model, word_text):
+def get_w(model, word_text,index, k):
         # vocab_size = len(word_vecs)
-    W = np.zeros(shape=(len() + 1, k), dtype='float32')
+    word_index_map= dict()
+    W = np.zeros(shape=(len(index) + 1, k), dtype='float32')
     W[0] = np.zeros(k, dtype='float32')
-    
     for word in word_text:
         W[i] = model[word]
-    return W
-def text_to_word2vec(model_path,save_path,cab,min_df):
+        word_index_map[word] = i
+        i += 1
+    return W,word_index_map
+def text_to_word2vec(save_path,all_text,min_df = 5,vector_size = 100):
     """
     将词表转化为词向量
     然后保存词向量表为文件
     采用gensim读取
     加入的新词表的最低频率为1
+    min_count是最低出现数，默认数值是5；
+    size是gensim Word2Vec将词汇映射到的N维空间的维度数量（N）默认的size数是100；
+    iter是模型训练时在整个训练语料库上的迭代次数，假如参与训练的文本量较少，就需要把这个参数调大一些。iter的默认值为5；
+    sg是模型训练所采用的的算法类型：1 代表 skip-gram，0代表 CBOW，sg的默认值为0；
+    window控制窗口，如果设得较小，那么模型学习到的是词汇间的组合性关系（词性相异）；如果设置得较大，会学习到词汇之间的聚合性关系（词性相同）。模型默认的window数值为5；
     """
-    print("loding_word2vec!")
-    model = gensim.models.KeyedVectors.load_word2vec_format(model_path, binary=False)
-    print("information",models)
-    word_vec = gensim.models.KeyedVectors(vector_size=model.vector_size)
-    for word in cab:
-        if cab[word]>= min_df:
-            word_vec.add_word(word,model[word])
-    word_vec.save_word2vec_format(save_path+'word2vec.bin', binary=True)
+    word_vec = gensim.models.Word2Vec(all_text, vector_size=100,min_count=min_df,window = 5,sg = 1)
+    index = word_vec.wv.key_to_index
+    word_vec.save_word2vec_format(save_path+'word2vec.bin', binary=False)
+    return index 
 
 def word_cab(data,clear_index):
     pass
@@ -103,7 +106,6 @@ def get_data (path):
         data_clear[i] = data_clear[i].apply(lambda x: ','.join(jieba.cut_for_search(x)))    
     #图像列表，先导入图片然后返回图片数据，最后加入到data中
     images = images_process(data_csv['image_path'].tolist())
-
     """
     目前暂定这样等会，看看哪些地方比较构式的地方等会再改
     """
@@ -111,10 +113,10 @@ def get_data (path):
     word_cab,all_text = word_cab(data_clear,clear_index)
 
     #随机划分训练集和测试集
-    
+
     return train_data,val_data,word_cab,all_text
        
-def read_data(text_only):
+def read_data(text_only,min_df):
     """
     训练加载data用
     先进行调用get_data进行读取文件分出训练集和测试集，返回训练集和测试集的参数情况，以及文件路径，
@@ -138,11 +140,10 @@ def read_data(text_only):
     max_l = len(max(all_text, key=len))
     print("max sentence length: " + str(max_l))    
     #加载词向量
-    word_enbedding_path = 'null'
     save_path = 'null'
     print("word2vec loaded!")
-    text_to_word2vec(word_enbedding_path,save_path,word_cab)
-    return train_data,val_data,all_text
+    index = text_to_word2vec(save_path,all_text)
+    return train_data,val_data,all_text,word_cab
    
   
 word_enbedding_path = r'E:\fakenews\sgns.target.word-word.dynwin5.thr10.neg5.dim300.iter5'
