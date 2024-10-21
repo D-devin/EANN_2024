@@ -47,7 +47,7 @@ class Rumor_Data(Dataset):
 
 class ReverseLayerF(Function):
     @staticmethod
-    def forward(ctx, x, lambd):
+    def forward(ctx, x, lambd): # 保存lambd以便在反向传播中使用
         ctx.lambd = lambd
         return x.view_as(x)
 
@@ -306,7 +306,7 @@ def main(args):
     best_validate_dir = ''
 
     print('training model')
-    adversarial = True
+    adversarial = True # 对抗训练为True，提高模型的鲁棒性和泛化能力
     # Train the Model
     #训练模型
     for epoch in range(args.num_epochs):
