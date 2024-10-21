@@ -111,7 +111,7 @@ class CNN_Fusion(nn.Module):
         self.image_encoder = nn.Linear(self.hidden_size, self.hidden_size)
 
         ###social context
-        #分类器
+        # 评论全连接
         self.social = nn.Linear(self.social_size, self.hidden_size)
 
         ##ATTENTION
@@ -170,12 +170,12 @@ class CNN_Fusion(nn.Module):
         
         #########CNN##################
         text = self.embed(text)
-        text = text * mask.unsqueeze(2).expand_as(text)
+        text = text * mask.unsqueeze(2).expand_as(text) # mask在索引为2的位置扩展一个维度，调整扩展后的形状与text相同，最后于mask相乘去除不需要的特征
         text = text.unsqueeze(1)
         text = [F.relu(conv(text)).squeeze(3) for conv in self.convs]  # [(N,hidden_dim,W), ...]*len(window_size)
         #text = [F.avg_pool1d(i, i.size(2)).squeeze(2) for i in text]  # [(N,hidden_dim), ...]*len(window_size)
         text = [F.max_pool1d(i, i.size(2)).squeeze(2) for i in text]
-        text = torch.cat(text, 1)
+        text = torch.cat(text, 1) # 整合四个维度的数据
         text = F.relu(self.fc1(text))
         #text = self.dropout(text)
 
@@ -327,7 +327,7 @@ def main(args):
         test_acc_vector = []
         vali_cost_vector = []
         test_cost_vector = []
-        #读取训练集的数据，数据文本，标签，事件标签，0是文本，1是图片
+        #读取训练集的数据，数据文本，标签，事件标签，0是不存在对应索引，1是存在对应索引
         for i, (train_data, train_labels, event_labels) in enumerate(train_loader):
             train_text,  train_mask, train_labels, event_labels = \
                 to_var(train_data[0]),  to_var(train_data[1]), \
@@ -470,7 +470,7 @@ def parse_arguments(parser):
     parser.add_argument('testing_file', type=str, metavar='<testing_file>', help='')
     parser.add_argument('output_file', type=str, metavar='<output_file>', help='')
 
-    parse.add_argument('--static', type=bool, default=True, help='')
+    parser.add_argument('--static', type=bool, default=True, help='')
     parser.add_argument('--sequence_length', type=int, default=28, help='')
     parser.add_argument('--class_num', type=int, default=2, help='')
     parser.add_argument('--hidden_dim', type=int, default = 32, help='')
@@ -479,7 +479,7 @@ def parse_arguments(parser):
     parser.add_argument('--dropout', type=int, default=0.5, help='')
     parser.add_argument('--filter_num', type=int, default=20, help='')
     parser.add_argument('--lambd', type=int, default= 1, help='')
-    parser.add_argument('--text_only', type=bool, default= True, help='')
+    parser.add_argument('--text_image', type=bool, default= True, help='')
 
     #    parser.add_argument('--sequence_length', type = int, default = 28, help = '')
     #    parser.add_argument('--input_size', type = int, default = 28, help = '')
@@ -519,7 +519,7 @@ def word2vec(post, word_id_map, W):
 
 def load_data(args):
     #加载数据，调用隔壁函数加载的是dataframe
-    train, validate, test = process_data.get_data(args.text_only)
+    train, validate, test = process_data.get_data(args.text_image)
     #print(train[4][0])
     #读取词向量
     word_vector_path = '../data/weibo/word_embedding.pickle'
