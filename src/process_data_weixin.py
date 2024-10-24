@@ -1,7 +1,6 @@
 # encoding=utf-8
 import pickle as pickle
 import random
-from random import *
 import numpy as np
 import torchvision
 from torchvision import datasets, models, transforms
@@ -22,26 +21,33 @@ import matplotlib.pyplot as plt
 import os.path
 import gensim
 import cv2
+
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ## 清洗（洗去标点，分词，去掉停用词），图片转化，文本与图像匹配，合并文本获取词频率，获取词向量将这次数据集的词向量加入到其中
 ## 最后返回数据集的data，将新的词向量保存。
-def stopwords(path=r'E:\fakenews\EANN_2024\Data\weixin\train\cn_stopwords.txt'):
+def stopwords(path=r'E:\fakenews\EANN_2024\Data\weixin\cn_stopwords.txt'):
     stopwords = []
     for line in open(path, 'r').readlines():
         stopwords.append(line.strip())
     return stopwords
   
 def ssl_clean(string):
+    if isinstance(string, float):
+        #print(string)
+        string = "无"
+        return string
+
     # 定义一个包含所有要清除的特殊字符的字符类
-    special_chars = u"[，。：；.`|“”——_/&;@、《》～（）#！%【】:,+(｜)丨●▶…! ✅㊙҈↑↓🤣\s*nbsp-]"
+    special_chars = u"[，。：；.`|“”——_/&;@、?？''’‘“”《》～（）#！%【】:,+(｜)丨●▶…! ✅㊙҈↑↓🤣\s*nbsp-]"
     # 使用re.sub()函数和字符类来清除所有特殊字符
     string = re.sub(special_chars, "", string)
     # 去除字符串两端的空白字符（注意：这里不处理中间的空白字符）
     return string.strip()
 
-def update_image_url(df, images_dir):
-    output_df = df.copy()  # 创建 DataFrame 的副本以避免修改原始数据
-    for index, row in df.iterrows():
+
+def update_image_url(output_df, images_dir):
+    # 创建 DataFrame 的副本以避免修改原始数据
+    for index, row in output_df.iterrows():
         id_value = row['id']
         # 构造相对路径
         relative_image_path = os.path.join(os.path.basename(images_dir), f'{id_value}.png')
@@ -94,6 +100,7 @@ def get_w(model, word_text,index, k):
     word_index_map= dict()
     W = np.zeros(shape=(len(index) + 1, k), dtype='float32')
     W[0] = np.zeros(k, dtype='float32')
+    i = 1
     for word in word_text:
         W[i] = model[word]
         word_index_map[word] = i
@@ -113,44 +120,34 @@ def text_to_word2vec(save_path,all_text,min_df = 5,vector_size = 100):
     window控制窗口，如果设得较小，那么模型学习到的是词汇间的组合性关系（词性相异）；如果设置得较大，会学习到词汇之间的聚合性关系（词性相同）。模型默认的window数值为5；
     """
     #trian
-    word_vec = gensim.models.Word2Vec(all_text, vector_size=100,min_count=min_df,window = 5,sg = 1)
-    index = word_vec.wv.key_to_index
+    word_vec = gensim.models.Word2Vec(all_text, vector_size=100,min_count=min_df,window = 5,sg = 0)
+    index = word_vec.wv.index_to_key
+
     #val
-    sub_list = random.sample(all_text, 100)
-    for i in sub_list:
-        w = word_vec.wv[i]
-        print("w为：",w)
-    word_vec.save_word2vec_format(save_path+'word2vec.bin', binary=False)
+
+    word_vec.save(save_path+'word2vec.bin')
     return index 
 
-def word_cab(data_clear, clear_index):
-
-    if not isinstance(data_clear, list) or not all(isinstance(i, list) for i in data_clear):
-        raise TypeError("data_clear should be a list of lists of strings.")
-    if not isinstance(clear_index, list) or not all(isinstance(i, int) for i in clear_index):
-        raise TypeError("clear_index should be a list of integers.")
-
+def word_cab(data_clear):
     all_text = []
-    vocab = set()
-
-
-    for i in clear_index:
-        if i < len(data_clear):
-            text = data_clear[i]
-            if isinstance(text, str):  # 检查文本是否为字符串（假设每段文本是字符串）
-                words = text.split()
-                all_text.append(words)  # 将词汇列表添加到all_text中
-                vocab.update(words)
-            else:
-                raise ValueError(f"Text at index {i} is not a string: {text}")
-        else:
-            raise IndexError(f"Invalid index {i}: index out of range for data_clear.")
-
+    vocab = {}
+    texts = data_clear['Title clear'] + data_clear['News Url clear'] + data_clear['Report Content clear']
             # 将词汇集合转换为排序后的列表，并创建词汇到索引的映射
-    vocab_list = sorted(vocab)
-    word_to_ix = {word: i for i, word in enumerate(vocab_list)}
+    for text in texts:
+                #print(i,"\n")
+        setence = ''
+        if isinstance(text, str):  # 检查文本是否为字符串（假设每段文本是字符串）
+            for word in text.split(): # 将词汇列表添加到all_text中
+                vocab[word] = vocab.get(word, 0) + 1
+                setence = setence + word+' '
 
-    return word_to_ix, all_text
+
+        else:
+            print(type(text))
+            raise ValueError(f"Text at index  is not a string: {text}")
+        all_text.append(setence)
+
+    return vocab, all_text
    
 def get_data(path):
     """
@@ -164,21 +161,20 @@ def get_data(path):
     print(os.getcwd())
     # 需要清洁的列表
     clear_index = ['Title', 'News Url', 'Report Content']
-    data_csv = pd.read_csv(path+r'\train.csv', encoding='utf-8')
+    data_csv = pd.read_csv(path+r'\origin_train.csv', encoding='utf-8')
     # 复制一个副本方便做处理避免表格过大
     data_clear = data_csv.copy()
     # 对指定列进行清洗
     for i in clear_index:
-        print(i)
-        print(data_clear[i])
+        #print(i)
+        #print(data_clear[i])
         data_clear[f'{i} clear'] = data_clear[i].apply(lambda x: ssl_clean(x))
-
         data_clear[f'{i} clear'] = data_clear[f'{i} clear'].apply(lambda x: ' '.join(jieba.cut_for_search(x)))
     #打上标签，是否正确读取news url
     data_clear['news_tag'] = data_clear['News Url'].apply(check_content_for_errors)
     # 更改image url 为path
-    images_directory = path+'train\image'
-    data_clear= (data_clear, images_directory)
+    images_directory = path+r'\train\image'
+    data_clear = update_image_url(data_clear,images_directory)
     #图片目前怎么处理不知道
     #images = images_process(data_clear['image_path'].tolist())
     #data_clear['image'] = images
@@ -186,17 +182,17 @@ def get_data(path):
     目前暂定这样等会，看看哪些地方有问题的地方等会再改
     """
     # 合并词汇做词汇表和全文本
-    word_to_ix, all_text = word_cab(data_clear, clear_index)
-
+    word_to_ix, all_text = word_cab(data_clear)
+    print(type(all_text))
     # 随机划分训练集和测试集
     val_ratio = 0.3
     total_samples = len(data_clear)
     initial_val_samples = int(total_samples * val_ratio)
     # 打乱索引
-    indices = list(range(len(data_clear)))
+    indices = list(range(data_clear.shape[0]))
     random.shuffle(indices)
     # 筛选符合news_tag条件的样本索引
-    filtered_indices = [i for i in indices if data_csv.loc[i, 'news_tag'] in [1, 2]]
+    filtered_indices = [i for i in indices if data_clear.loc[i, 'news_tag'] in [1, 2]]
     val_samples = int(len(filtered_indices) * val_ratio)
     train_samples = len(filtered_indices) - val_samples
     # 选择验证集训练集样本
@@ -212,7 +208,7 @@ def get_data(path):
     train_data.to_csv('train.csv', index=False)
     val_data.to_csv('val.csv', index=False)
 
-    return train_data, val_data, word_cab, all_text
+    return train_data, val_data, word_to_ix, all_text
        
 def read_data(text_only,min_df,path = "null"):
     """
@@ -238,10 +234,10 @@ def read_data(text_only,min_df,path = "null"):
     max_l = len(max(all_text, key=len))
     print("max sentence length: " + str(max_l))    
     #加载词向量
-    save_path = r'E:\fakenews\fakenews_data'
+    save_path = r'E:\fakenews\EANN_2024\Data\weixin'
     print("word2vec loaded!")
     index = text_to_word2vec(save_path,all_text)
     return train_data,val_data,all_text,word_cab
    
   
-read_data(False,30,path= r'E:\fakenews\EANN_2024\Data\weixin\train')
+read_data(False,30,path= r'E:\fakenews\EANN_2024\Data\weixin')
