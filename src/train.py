@@ -1,10 +1,8 @@
 import numpy as np
 import argparse
 import time, os
-# import random
 import process_data_weibo as process_data
 import copy
-import pickle as pickle
 from random import sample
 import torchvision
 from sklearn.model_selection import train_test_split
@@ -15,15 +13,15 @@ from torch.autograd import Variable, Function
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence
-
+from PIL import Image
 import torchvision.datasets as dsets
 import torchvision.transforms as transforms
-
-#from logger import Logger
-
 from sklearn import metrics
 from sklearn.preprocessing import label_binarize
 import scipy.io as sio
+from gensim.models import Word2Vec
+from torchvision import datasets, models, transforms
+
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 class Rumor_Data(Dataset):
     #数据转换类转换为张量
@@ -236,10 +234,6 @@ def split_train_validation(train, percent):
     print("train and validation data set has been splited")
 
     return train_data, validation
-
-
-
-
 
 def main(args):
     print('loading data')
@@ -461,7 +455,6 @@ def main(args):
           % (test_confusion_matrix))
 
     print('Saving results')
-   
 
 #参数设置函数
 def parse_arguments(parser):
@@ -493,7 +486,6 @@ def parse_arguments(parser):
     parser.add_argument('--event_num', type=int, default=10, help='')
     return parser
 
-
 #词向量转换函数
 def word2vec(post, word_id_map, W):
     word_embedding = []
@@ -510,7 +502,6 @@ def word2vec(post, word_id_map, W):
 
         while len(sen_embedding) < args.sequence_len:
             sen_embedding.append(0)
-
 
         word_embedding.append(copy.deepcopy(sen_embedding))
         mask.append(copy.deepcopy(mask_seq))

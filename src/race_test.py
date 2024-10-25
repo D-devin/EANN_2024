@@ -1,10 +1,8 @@
 import numpy as np
 import argparse
 import time, os
-# import random
-import process_data_weibo as process_data
+import process_data_weixin as process_data
 import copy
-import pickle as pickle
 from random import sample
 import torchvision
 from sklearn.model_selection import train_test_split
@@ -15,16 +13,18 @@ from torch.autograd import Variable, Function
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence
-
+from PIL import Image
 import torchvision.datasets as dsets
 import torchvision.transforms as transforms
-
-#from logger import Logger
-import gensim
 from sklearn import metrics
 from sklearn.preprocessing import label_binarize
 import scipy.io as sio
+from gensim.models import Word2Vec
+from torchvision import datasets, models, transforms
+import gensim
+
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 class Rumor_Data(Dataset):
     #数据转换类转换为张量
     def __init__(self, dataset):
@@ -43,8 +43,6 @@ class Rumor_Data(Dataset):
         return (self.text[idx], self.mask[idx]), self.label[idx], self.event_label[idx]
 
 
-
-
 class ReverseLayerF(Function):
     @staticmethod
     def forward(ctx, x, lambd):
@@ -56,11 +54,8 @@ class ReverseLayerF(Function):
         # 返回的梯度数量应与输入数量相匹配
         return grad_output, None  # 如果只有一个输入，第二个返回 None
 
-
 def grad_reverse(x, lambd):
     return ReverseLayerF.apply(x, lambd)
-
-
 
 
 # Neural Network Model (1 hidden layer)
@@ -473,12 +468,11 @@ def word2vec(post, word_vec):
 
 def load_data(args):
     #加载数据，调用隔壁函数加载的是dataframe
-    train, validate,word_text = process_data.read_data(args.text_only)
+    train, validate,word_text,cab,word2_path = process_data.read_data(args.text_only)
     #print(train[4][0])
     #读取词向量
-    word_vector_path = 'null'
-    model = gensim.models.KeyedVectors.load_word2vec_format(word_vector_path, binary=True)
-    word_vectors,word_index_map = process_data_weixin.get_w(model, word_text)
+    model = gensim.models.KeyedVectors.load_word2vec_format(word2_path)
+    word_vectors,word_index_map = process_data.get_w(model, word_text)
     args.vocab_size = len(model.vocab)
     args.sequence_len = 150
     print("translate data to embedding")

@@ -1,26 +1,17 @@
 # encoding=utf-8
-import pickle as pickle
 import random
 import numpy as np
 import torchvision
 from torchvision import datasets, models, transforms
 import os
-from collections import defaultdict
 import sys, re
 import pandas as pd
-import math
-from types import *
+from PIL import Image
 from gensim.models import Word2Vec
 import jieba
-from sklearn.cluster import AgglomerativeClustering
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.feature_extraction.text import TfidfTransformer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
 import os.path
 import gensim
-import cv2
+from reading_data import updatecsv
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ## 清洗（洗去标点，分词，去掉停用词），图片转化，文本与图像匹配，合并文本获取词频率，获取词向量将这次数据集的词向量加入到其中
@@ -43,7 +34,6 @@ def ssl_clean(string):
     string = re.sub(special_chars, "", string)
     # 去除字符串两端的空白字符（注意：这里不处理中间的空白字符）
     return string.strip()
-
 
 def update_image_url(output_df, images_dir):
     # 创建 DataFrame 的副本以避免修改原始数据
@@ -74,24 +64,21 @@ def check_content_for_errors(text):
             return "1"
     return "2"
 
-def images_process (image_url):
+def images_process (image_url,orginal_path):
     image_list = []
     for path in image_url:
-        image_name = os.path.splitext(path)[0]
+        image_name = orginal_path+'\\'+path
         data_transforms = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], 
                                  [0.229, 0.224, 0.225])])
-        try:
-            im = cv2.imread(image_name)
-            im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-            im = data_transforms(im)
-            image_list.append(im) 
-        except:
-            print("err_image_name:"+image_name)
-            print("image_path:"+path)
+
+        im = Image.open(image_name).convert('RGB')
+        im = data_transforms(im)
+        image_list.append(im)
+
     print("image_length:"+str(len(image_list)))
     return image_list
 
@@ -126,26 +113,27 @@ def text_to_word2vec(save_path,all_text,min_df = 5,vector_size = 100):
     #val
 
     word_vec.save(save_path+'word2vec.bin')
-    return index 
+    path = save_path+r'\word2vec.bin'
+    return index,path
 
 def word_cab(data_clear):
     all_text = []
     vocab = {}
+
     texts = data_clear['Title clear'] + data_clear['News Url clear'] + data_clear['Report Content clear']
             # 将词汇集合转换为排序后的列表，并创建词汇到索引的映射
     for text in texts:
-                #print(i,"\n")
+        setences = []
         setence = ''
         if isinstance(text, str):  # 检查文本是否为字符串（假设每段文本是字符串）
             for word in text.split(): # 将词汇列表添加到all_text中
                 vocab[word] = vocab.get(word, 0) + 1
-                setence = setence + word+' '
-
-
+                setences.append(word)
         else:
             print(type(text))
             raise ValueError(f"Text at index  is not a string: {text}")
-        all_text.append(setence)
+
+        all_text.append(setences)
 
     return vocab, all_text
    
@@ -174,9 +162,10 @@ def get_data(path):
     data_clear['news_tag'] = data_clear['News Url'].apply(check_content_for_errors)
     # 更改image url 为path
     images_directory = path+r'\train\image'
+    images_dir = path+r'\train'
     data_clear = update_image_url(data_clear,images_directory)
-    #图片目前怎么处理不知道
-    #images = images_process(data_clear['image_path'].tolist())
+    #图片如果提前预处理缓存爆炸！！！
+    #images = images_process(data_clear['Image Url'].tolist(),images_dir)
     #data_clear['image'] = images
     """
     目前暂定这样等会，看看哪些地方有问题的地方等会再改
@@ -208,7 +197,7 @@ def get_data(path):
     train_data.to_csv('train.csv', index=False)
     val_data.to_csv('val.csv', index=False)
 
-    return train_data, val_data, word_to_ix, all_text
+    return path+'train.csv', val_data+'val.csv', word_to_ix, all_text
        
 def read_data(text_only,min_df,path = "null"):
     """
@@ -216,17 +205,22 @@ def read_data(text_only,min_df,path = "null"):
     先进行调用get_data进行读取文件分出训练集和测试集，返回训练集和测试集的参数情况，以及文件路径，
     在这个函数内加载这个读取文件。
     然后调用做分别做两个全文合集丢入词向量函数得到词向量表，返回并且词向量参数情况
+    最后返回的是train和val的csv路径，全文本，词汇表（字典），词向量路径
+    全文本格式为：[['词语','词语','词语'，'词语']
+                  ['词语','词语','词语'，'词语']]
+                  几个语句
 
     """
         #text_only = False
-
+    #链接预处理的文件
+    #updatecsv(path+r'\train\train.csv', path+r'\origin_train.csv')
     if text_only:
         print("Text only")
         image_list = []
     else:
         print("Text and image")
     print("loding data...")    
-    train_data,val_data,word_cab,all_text=get_data(path)
+    train_data_path,val_data_path,word_cab,all_text=get_data(path)
 
     #输出参数情况
     print("number of sentences: " + str(len(all_text)))
@@ -236,8 +230,8 @@ def read_data(text_only,min_df,path = "null"):
     #加载词向量
     save_path = r'E:\fakenews\EANN_2024\Data\weixin'
     print("word2vec loaded!")
-    index = text_to_word2vec(save_path,all_text)
-    return train_data,val_data,all_text,word_cab
-   
-  
+    if os.path.isfile(save_path+'word2vec.bin'):
+        return train_data_path,val_data_path,all_text,word_cab,save_path+r'\word2vec.bin'
+    index,word2_path = text_to_word2vec(save_path,all_text)
+    return train_data_path,val_data_path,all_text,word_cab,word2_path
 read_data(False,30,path= r'E:\fakenews\EANN_2024\Data\weixin')
