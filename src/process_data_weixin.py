@@ -55,7 +55,7 @@ def update_image_url(output_df, images_dir):
 def check_content_for_errors(text):
     # 定义无法读取的关键词列表
     error_keywords = [
-        "账号 屏蔽", "内容 无法 查看", "内容发布者 删除", "微信 公众 平台 运营 中心",
+        "账号 屏蔽", "内容 无法 查看", "内容发布者 删除",
         "账号 迁移", "公众号 环境异常"
     ]
     # 检查文本中是否包含任何关键词
