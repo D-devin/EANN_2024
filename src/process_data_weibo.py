@@ -21,6 +21,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import os.path
 from gensim.models import Word2Vec
 
+
 #加载停用词表
 def stopwordslist(filepath = '../Data/weibo/stop_words.txt'):
     stopwords = {}
@@ -253,9 +254,6 @@ def load_data(train, validate, test):
         for word in sentence:
             vocab[word] += 1
     return vocab, all_text
-
-
-
 
 
 def build_data_cv(data_folder, cv=10, clean_string=True):
