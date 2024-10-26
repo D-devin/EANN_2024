@@ -192,7 +192,7 @@ def get_data(path):
 
     # 根据索引划分数据集
     train_data = data_csv.loc[train_indices_final]
-    val_data = data_csv.loc[val_indices[val_samples // 2:]]  # 验证集剩下的一半
+    val_data = data_csv.loc[val_indices]  
 
     train_data.to_csv('train.csv', index=False)
     val_data.to_csv('val.csv', index=False)
