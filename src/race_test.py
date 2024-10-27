@@ -22,17 +22,17 @@ import scipy.io as sio
 from gensim.models import Word2Vec
 from torchvision import datasets, models, transforms
 import gensim
-
+import pandas as pd
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 class Rumor_Data(Dataset):
     #数据转换类转换为张量
     def __init__(self, dataset):
-        self.text = torch.from_numpy(np.array(dataset['post_text']))
+        self.text = torch.from_numpy(np.array(dataset['post_text_index']))
         #self.social_context = torch.from_numpy(np.array(dataset['social_feature']))
         self.mask = torch.from_numpy(np.array(dataset['mask']))
         self.label = torch.from_numpy(np.array(dataset['label']))
-        self.event_label = torch.from_numpy(np.array(dataset['event_label']))
+        self.event_label = torch.from_numpy(np.array(dataset['news_tag']))
         print('TEXT: %d, labe: %d, Event: %d'
                % (len(self.text), len(self.label), len(self.event_label)))
 
@@ -245,7 +245,7 @@ def main(args):
     #                              num_workers=2)
     #载入数据
     # MNIST Dataset
-    train, validation, test, W = load_data(args)
+    train, validation, W = load_data(args)
 
     #train, validation = split_train_validation(train,  1)
 
@@ -258,7 +258,7 @@ def main(args):
 
     validate_dataset = Rumor_Data(validation)
 
-    test_dataset = Rumor_Data(test) # not used
+    #test_dataset = Rumor_Data(test) # not used
 
 
 
@@ -272,9 +272,6 @@ def main(args):
                                  batch_size=args.batch_size,
                                  shuffle=False)
 
-    test_loader = DataLoader(dataset=test_dataset,
-                             batch_size=args.batch_size,
-                             shuffle=False)
 
     print('building model')
     model = CNN_Fusion(args, W)
@@ -418,8 +415,8 @@ def main(args):
 #参数设置函数
 def parse_arguments(parser):
     parser.add_argument('training_file', type=str, metavar='<training_file>', help='')
-    #parser.add_argument('validation_file', type=str, metavar='<validation_file>', help='')
-    parser.add_argument('testing_file', type=str, metavar='<testing_file>', help='')
+    parser.add_argument('validation_file', type=str, metavar='<validation_file>', help='')
+    #parser.add_argument('testing_file', type=str, metavar='<testing_file>', help='')
     parser.add_argument('output_file', type=str, metavar='<output_file>', help='')
 
     parse.add_argument('--static', type=bool, default=True, help='')
@@ -447,49 +444,78 @@ def parse_arguments(parser):
 
 
 #词向量转换函数
-def word2vec(post, word_vec):
-    word_embedding = []
+def word2vec(post,cab,index):
+    ## 把全文综合起来，然后替换成对应词向量的索引，
+    texts = post['Title clear'] + post['News Url clear'] + post['Report Content clear']
+    text_index= []
     mask = []
     #length = []
-    for sentence in post:
-        sen_embedding = []
-        seq_len = len(sentence) -1
-        mask_seq = np.zeros(args.sequence_len, dtype = np.float32)
-        mask_seq[:len(sentence)] = 1.0
-        for i, word in enumerate(sentence):
-            sen_embedding.append(word_vec[word])
+    for sentence in texts:
+        sen_index = []
+        if isinstance(sentence, float):
+            print(sentence)
+            print(type(sentence))
+            sen_index.append(0)
+            text_index.append(sen_index)
+            mask_seq = np.zeros(args.sequence_len, dtype = np.float32)
+            mask_seq[1] = 0
+            mask.append(mask_seq)
+        else:
+            sentence = sentence.split()
+            seq_len = len(sentence)
+            mask_seq = np.zeros(args.sequence_len, dtype = np.float32)
+            mask_seq[:len(sentence)] = 1.0
+            for word in sentence:
+                if word in cab:
+                    word_index = index[word]
+                else :
+                    word_index = 0
+                sen_index.append(word_index)
+            while len(sen_index) < args.sequence_len:
+                word_index = 0
+                sen_index.append(word_index)
+            text_index.append(sen_index)
+            mask.append(mask_seq)
 
-        while len(sen_embedding) < args.sequence_len:
-            sen_embedding.append(0)
-        word_embedding.append(copy.deepcopy(sen_embedding))
-        mask.append(copy.deepcopy(mask_seq))
-        #length.append(seq_len)
-    return word_embedding, mask
+
+
+    return text_index, mask
 
 def load_data(args):
     #加载数据，调用隔壁函数加载的是dataframe
-    train, validate,word_text,cab,word2_path = process_data.read_data(args.text_only)
+    #train_path, val_path,word2_path = process_data.read_data(args.text_only,32,path= '..\Data\weixin')
     #print(train[4][0])
     #读取词向量
-    model = gensim.models.KeyedVectors.load_word2vec_format(word2_path)
-    word_vectors,word_index_map = process_data.get_w(model, word_text)
-    args.vocab_size = len(model.vocab)
-    args.sequence_len = 150
+    train_path = r'E:\fakenews\EANN_2024\Data\weixin\train.csv'
+    val_path = r'E:\fakenews\EANN_2024\Data\weixin\val.csv'
+    word2_path = r'E:\fakenews\EANN_2024\Data\weixin\word2vec.model'
+    train = pd.read_csv(train_path,encoding = 'utf-8')
+    val = pd.read_csv(val_path,encoding='utf-8')
+    model = gensim.models.Word2Vec.load(word2_path)
+    cab= model.wv.index_to_key
+    index = model.wv.key_to_index
+    vectors = model.wv.vectors
+    args.vocab_size = len(cab)
+    #sequence_len自己看着改，我这里写的100！
+    args.sequence_len = 30
     print("translate data to embedding")
     #数据集与词向量的转换
     #读取验证集
-    word_embedding, mask = word2vec(validate['post_text'],model)
-    validate['post_text'] = word_embedding
-    validate['mask'] = mask
+
+    val_text_index, val_mask = word2vec(val,cab,index)
+    val['post_text_index'] = val_text_index
+    val['mask'] = val_mask
+    print("Val Data Size is "+str(len(val['post_text_index'])))
+
     #读取训练集
-    word_embedding, mask = word2vec(train['post_text'], model)
-    train['post_text'] = word_embedding
-    train['mask'] = mask
+    train_text_index, train_mask = word2vec(train,cab,index)
+    train['post_text_index'] = train_text_index
+    train['mask'] = train_mask
     print("sequence length " + str(args.sequence_length))
-    print("Train Data Size is "+str(len(train['post_text'])))
+    print("Train Data Size is "+str(len(train['post_text_index'])))
     print("Finished loading data ")
 
-    return train, validate, test, model,word_vectors
+    return train, val, vectors
 
 def transform(event):
     matrix = np.zeros([len(event), max(event) + 1])
@@ -501,10 +527,10 @@ def transform(event):
 if __name__ == '__main__':
     parse = argparse.ArgumentParser()
     parser = parse_arguments(parse)
-    train = '../Data/weibo/train.pickle'
-    test = '../Data/weibo/test.pickle'
+    train = '../Data/weixin/train.csv'
+    val = '../Data/weixin/train.csv'
     output = '../Data/weibo/output/'
-    args = parser.parse_args([train, test, output])
+    args = parser.parse_args([train, val, output])
     #    print(args)
     main(args)
 

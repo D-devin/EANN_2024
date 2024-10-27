@@ -11,6 +11,7 @@ from gensim.models import Word2Vec
 import jieba
 import os.path
 import gensim
+from gensim.models import Word2Vec
 from reading_data import updatecsv
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -42,6 +43,7 @@ def update_image_url(output_df, images_dir):
         # 构造相对路径
         relative_image_path = os.path.join(os.path.basename(images_dir), f'{id_value}.png')
         # 检查图片文件是否存在
+        #print(os.listdir(images_dir))
         image_file = os.path.join(images_dir, f'{id_value}.png')
         if not os.path.exists(image_file):
             print(f"Warning: Image file for id {id_value} does not exist at {image_file}")
@@ -55,14 +57,14 @@ def update_image_url(output_df, images_dir):
 def check_content_for_errors(text):
     # 定义无法读取的关键词列表
     error_keywords = [
-        "账号 屏蔽", "内容 无法 查看", "内容发布者 删除", "微信 公众 平台 运营 中心",
+        "账号 屏蔽", "内容 无法 查看", "内容发布者 删除",
         "账号 迁移", "公众号 环境异常"
     ]
     # 检查文本中是否包含任何关键词
     for keyword in error_keywords:
         if keyword in text:
-            return "1"
-    return "2"
+            return 1
+    return 2
 
 def images_process (image_url,orginal_path):
     image_list = []
@@ -108,12 +110,11 @@ def text_to_word2vec(save_path,all_text,min_df = 5,vector_size = 100):
     """
     #trian
     word_vec = gensim.models.Word2Vec(all_text, vector_size=100,min_count=min_df,window = 5,sg = 0)
-    index = word_vec.wv.index_to_key
-
+    cab = word_vec.wv.index_to_key
+    index = word_vec.wv.key_to_index
     #val
-
-    word_vec.save(save_path+'word2vec.bin')
-    path = save_path+r'\word2vec.bin'
+    word_vec.save(os.path.join(save_path,'word2vec.model'))
+    path = os.path.join(save_path,'word2vec.model')
     return index,path
 
 def word_cab(data_clear):
@@ -145,11 +146,11 @@ def get_data(path):
     dataframe列[id,标题，正文，图片路径，评论，判断标签，clear标题，clearn正文，clearn评论]
     图片处理是直接为路径
     """
-    os.chdir(path)
     print(os.getcwd())
     # 需要清洁的列表
     clear_index = ['Title', 'News Url', 'Report Content']
-    data_csv = pd.read_csv(path+r'\origin_train.csv', encoding='utf-8')
+    clear_indexs = ['id','Ofiicial Account Name','Title clear', 'News Url clear', 'Report Content clear','news_tag','label']
+    data_csv = pd.read_csv(os.path.join(path,'origin_train.csv'), encoding='utf-8')
     # 复制一个副本方便做处理避免表格过大
     data_clear = data_csv.copy()
     # 对指定列进行清洗
@@ -159,10 +160,10 @@ def get_data(path):
         data_clear[f'{i} clear'] = data_clear[i].apply(lambda x: ssl_clean(x))
         data_clear[f'{i} clear'] = data_clear[f'{i} clear'].apply(lambda x: ' '.join(jieba.cut_for_search(x)))
     #打上标签，是否正确读取news url
-    data_clear['news_tag'] = data_clear['News Url'].apply(check_content_for_errors)
+    data_clear['news_tag'] = data_clear['News Url clear'].apply(check_content_for_errors)
     # 更改image url 为path
-    images_directory = path+r'\train\image'
-    images_dir = path+r'\train'
+    images_directory = os.path.join(path,'train\image')
+    images_dir = os.path.join(path,'train')
     data_clear = update_image_url(data_clear,images_directory)
     #图片如果提前预处理缓存爆炸！！！
     #images = images_process(data_clear['Image Url'].tolist(),images_dir)
@@ -191,13 +192,14 @@ def get_data(path):
     train_indices_final = train_indices_initial + half_val_indices
 
     # 根据索引划分数据集
-    train_data = data_csv.loc[train_indices_final]
-    val_data = data_csv.loc[val_indices[val_samples // 2:]]  # 验证集剩下的一半
+    data_clear = data_clear.loc[:, clear_indexs]
+    train_data = data_clear.loc[train_indices_final]
+    val_data = data_clear.loc[val_indices[val_samples // 2:]]  # 验证集剩下的一半
 
-    train_data.to_csv('train.csv', index=False)
-    val_data.to_csv('val.csv', index=False)
+    train_data.to_csv(os.path.join(path,'train.csv'), index=True)
+    val_data.to_csv(os.path.join(path,'val.csv'), index=True)
 
-    return path+'train.csv', val_data+'val.csv', word_to_ix, all_text
+    return os.path.join(path,'train.csv'), os.path.join(path,'val.csv'), word_to_ix, all_text
        
 def read_data(text_only,min_df,path = "null"):
     """
@@ -228,10 +230,12 @@ def read_data(text_only,min_df,path = "null"):
     max_l = len(max(all_text, key=len))
     print("max sentence length: " + str(max_l))    
     #加载词向量
-    save_path = r'E:\fakenews\EANN_2024\Data\weixin'
+    save_path = '..\Data\weixin'
     print("word2vec loaded!")
-    if os.path.isfile(save_path+'word2vec.bin'):
-        return train_data_path,val_data_path,all_text,word_cab,save_path+r'\word2vec.bin'
+    if os.path.isfile(os.path.join(save_path,'word2vec.model')):
+        return train_data_path,val_data_path,os.path.join(save_path,'word2vec.model')
     index,word2_path = text_to_word2vec(save_path,all_text)
-    return train_data_path,val_data_path,all_text,word_cab,word2_path
-read_data(False,30,path= r'E:\fakenews\EANN_2024\Data\weixin')
+    return train_data_path,val_data_path,word2_path
+#read_data(False,30,path= '..\Data\weixin')
+#model = Word2Vec.load('..\Data\weixin\word2vec.model')
+#print(model)
