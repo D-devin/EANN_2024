@@ -1,6 +1,9 @@
 import numpy as np
 import argparse
 import time, os
+
+from triton import TritonError
+
 import process_data_weixin as process_data
 import copy
 from random import sample
@@ -28,11 +31,11 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 class Rumor_Data(Dataset):
     #数据转换类转换为张量
     def __init__(self, dataset):
-        self.text = torch.from_numpy(np.array(dataset['post_text_index']))
+        self.text = torch.from_numpy(np.array(dataset['post_text_index'].tolist()))
         #self.social_context = torch.from_numpy(np.array(dataset['social_feature']))
-        self.mask = torch.from_numpy(np.array(dataset['mask']))
-        self.label = torch.from_numpy(np.array(dataset['label']))
-        self.event_label = torch.from_numpy(np.array(dataset['news_tag']))
+        self.mask = torch.from_numpy(np.array(dataset['mask'].tolist()))
+        self.label = torch.from_numpy(np.array(dataset['label'].tolist()))
+        self.event_label = torch.from_numpy(np.array(dataset['news_tag'].tolist()))
         print('TEXT: %d, labe: %d, Event: %d'
                % (len(self.text), len(self.label), len(self.event_label)))
 
@@ -444,51 +447,47 @@ def parse_arguments(parser):
 
 
 #词向量转换函数
-def word2vec(post,cab,index):
-    ## 把全文综合起来，然后替换成对应词向量的索引，
+def word2vec(post, cab, index, sequence_length):
     texts = post['Title clear'] + post['News Url clear'] + post['Report Content clear']
-    text_index= []
+    text_index = []
     mask = []
-    #length = []
-    for sentence in texts:
+    discarded_indices = []  # 用于记录丢弃的索引
+
+    for idx, sentence in enumerate(texts):  # 使用 enumerate 获取索引
         sen_index = []
-        if isinstance(sentence, float):
-            print(sentence)
-            print(type(sentence))
-            sen_index.append(0)
-            text_index.append(sen_index)
-            mask_seq = np.zeros(args.sequence_len, dtype = np.float32)
-            mask_seq[1] = 0
-            mask.append(mask_seq)
+        if isinstance(sentence, float) or not sentence.strip():  # 检查是否为空句子
+            discarded_indices.append(idx)  # 记录丢弃的索引
+            continue  # 直接跳过
         else:
             sentence = sentence.split()
-            seq_len = len(sentence)
-            mask_seq = np.zeros(args.sequence_len, dtype = np.float32)
+            mask_seq = np.zeros(sequence_length, dtype=np.float32)
             mask_seq[:len(sentence)] = 1.0
             for word in sentence:
                 if word in cab:
                     word_index = index[word]
-                else :
+                else:
                     word_index = 0
                 sen_index.append(word_index)
-            while len(sen_index) < args.sequence_len:
-                word_index = 0
-                sen_index.append(word_index)
+            # 填充至 sequence_len
+            while len(sen_index) < sequence_length:
+                sen_index.append(0)  # 用 0 填充
+            sen_index = sen_index[:sequence_length]  # 截断至 sequence_len
             text_index.append(sen_index)
             mask.append(mask_seq)
 
+    return text_index, mask, discarded_indices  # 返回丢弃的索引
 
 
-    return text_index, mask
+
 
 def load_data(args):
     #加载数据，调用隔壁函数加载的是dataframe
-    #train_path, val_path,word2_path = process_data.read_data(args.text_only,32,path= '..\Data\weixin')
+    train_path, val_path,word2_path = process_data.read_data(args.text_only,32,path= '../Data/weixin')
     #print(train[4][0])
     #读取词向量
-    train_path = r'E:\fakenews\EANN_2024\Data\weixin\train.csv'
-    val_path = r'E:\fakenews\EANN_2024\Data\weixin\val.csv'
-    word2_path = r'E:\fakenews\EANN_2024\Data\weixin\word2vec.model'
+    #train_path = r'C:\Users\yjpan\Desktop\EANN_2024\Data\weixin\train.csv'
+    #val_path = r'C:\Users\yjpan\Desktop\EANN_2024\Data\weixin\val.csv'
+    #word2_path = r'C:\Users\yjpan\Desktop\EANN_2024\Data\weixin\word2vec.model'
     train = pd.read_csv(train_path,encoding = 'utf-8')
     val = pd.read_csv(val_path,encoding='utf-8')
     model = gensim.models.Word2Vec.load(word2_path)
@@ -502,13 +501,15 @@ def load_data(args):
     #数据集与词向量的转换
     #读取验证集
 
-    val_text_index, val_mask = word2vec(val,cab,index)
+    val_text_index, val_mask,discarded_indices = word2vec(val,cab,index,args.sequence_len)
+    val.drop(index = discarded_indices,errors='ignore',inplace=True)
     val['post_text_index'] = val_text_index
     val['mask'] = val_mask
     print("Val Data Size is "+str(len(val['post_text_index'])))
 
     #读取训练集
-    train_text_index, train_mask = word2vec(train,cab,index)
+    train_text_index, train_mask,discarded_indices = word2vec(train,cab,index,args.sequence_len)
+    train.drop(index = discarded_indices,errors = 'ignore',inplace=True)
     train['post_text_index'] = train_text_index
     train['mask'] = train_mask
     print("sequence length " + str(args.sequence_length))
