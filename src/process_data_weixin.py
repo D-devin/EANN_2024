@@ -17,7 +17,7 @@ from reading_data import updatecsv
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 ## 清洗（洗去标点，分词，去掉停用词），图片转化，文本与图像匹配，合并文本获取词频率，获取词向量将这次数据集的词向量加入到其中
 ## 最后返回数据集的data，将新的词向量保存。
-def stopwords(path=r'E:\fakenews\EANN_2024\Data\weixin\cn_stopwords.txt'):
+def stopwords(path=r'C:\Users\yjpan\Desktop\EANN_2024\Data\weixin\cn_stopwords.txt'):
     stopwords = []
     for line in open(path, 'r').readlines():
         stopwords.append(line.strip())
@@ -162,7 +162,7 @@ def get_data(path):
     #打上标签，是否正确读取news url
     data_clear['news_tag'] = data_clear['News Url clear'].apply(check_content_for_errors)
     # 更改image url 为path
-    images_directory = os.path.join(path,'train\image')
+    images_directory = os.path.join(path,'train/image')
     images_dir = os.path.join(path,'train')
     data_clear = update_image_url(data_clear,images_directory)
     #图片如果提前预处理缓存爆炸！！！
@@ -230,12 +230,12 @@ def read_data(text_only,min_df,path = "null"):
     max_l = len(max(all_text, key=len))
     print("max sentence length: " + str(max_l))    
     #加载词向量
-    save_path = '..\Data\weixin'
+    save_path = '../Data/weixin'
     print("word2vec loaded!")
     if os.path.isfile(os.path.join(save_path,'word2vec.model')):
         return train_data_path,val_data_path,os.path.join(save_path,'word2vec.model')
     index,word2_path = text_to_word2vec(save_path,all_text)
     return train_data_path,val_data_path,word2_path
-#read_data(False,30,path= '..\Data\weixin')
+read_data(False,30,path= '../Data/weixin')
 #model = Word2Vec.load('..\Data\weixin\word2vec.model')
 #print(model)

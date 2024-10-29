@@ -1,6 +1,9 @@
 import numpy as np
 import argparse
 import time, os
+
+from triton import TritonError
+
 import process_data_weixin as process_data
 import copy
 from random import sample
@@ -28,11 +31,11 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 class Rumor_Data(Dataset):
     #数据转换类转换为张量
     def __init__(self, dataset):
-        self.text = torch.from_numpy(np.array(dataset['post_text_index']))
+        self.text = torch.from_numpy(np.array(dataset['post_text_index'].tolist()))
         #self.social_context = torch.from_numpy(np.array(dataset['social_feature']))
-        self.mask = torch.from_numpy(np.array(dataset['mask']))
-        self.label = torch.from_numpy(np.array(dataset['label']))
-        self.event_label = torch.from_numpy(np.array(dataset['news_tag']))
+        self.mask = torch.from_numpy(np.array(dataset['mask'].tolist()))
+        self.label = torch.from_numpy(np.array(dataset['label'].tolist()))
+        self.event_label = torch.from_numpy(np.array(dataset['news_tag'].tolist()))
         print('TEXT: %d, labe: %d, Event: %d'
                % (len(self.text), len(self.label), len(self.event_label)))
 
@@ -78,8 +81,9 @@ class CNN_Fusion(nn.Module):
         #文本处理的循环网络
         self.embed = nn.Embedding(vocab_size, emb_dim)
         self.embed.weight = nn.Parameter(torch.from_numpy(W))
-        self.lstm = nn.LSTM(self.lstm_size, self.lstm_size)
-        self.text_fc = nn.Linear(self.lstm_size, self.hidden_size)
+        self.lstm = nn.LSTM(self.hidden_size, self.hidden_size, batch_first=True, bidirectional=True)
+        # 双向lstm
+        self.lstm_fc = nn.Linear(self.hidden_size * 2, self.hidden_size)
         self.text_encoder = nn.Linear(emb_dim, self.hidden_size)
 
         ### TEXT CNN
@@ -403,6 +407,53 @@ def main(args):
             best_validate_dir = args.output_file + str(epoch + 1) + '_text.pkl'
             torch.save(model.state_dict(), best_validate_dir)
 
+    duration = time.time() - start_time
+    # 测试
+    # Test the Model
+    print('testing model')
+    model = CNN_Fusion(args, W)
+    model.load_state_dict(torch.load(best_validate_dir))
+    #    print(torch.cuda.is_available())
+    if torch.cuda.is_available():
+        model.cuda()
+    model.eval()
+    test_score = []
+    test_pred = []
+    test_true = []
+    # 读取测试集的数据，数据文本，标签，事件标签，0是文本，1是图
+    for i, (test_data, test_labels, event_labels) in enumerate(validate_loader):
+        test_text, test_mask, test_labels = to_var(
+            test_data[0]), to_var(test_data[1]), to_var(test_labels)
+        test_outputs, _ = model(test_text, test_mask)
+        _, test_argmax = torch.max(test_outputs, 1)
+        if i == 0:
+            test_score = to_np(test_outputs.squeeze())
+            test_pred = to_np(test_argmax.squeeze())
+            test_true = to_np(test_labels.squeeze())
+        else:
+            test_score = np.concatenate((test_score, to_np(test_outputs.squeeze())), axis=0)
+            test_pred = np.concatenate((test_pred, to_np(test_argmax.squeeze())), axis=0)
+            test_true = np.concatenate((test_true, to_np(test_labels.squeeze())), axis=0)
+
+    test_accuracy = metrics.accuracy_score(test_true, test_pred)
+    test_f1 = metrics.f1_score(test_true, test_pred, average='macro')
+    test_precision = metrics.precision_score(test_true, test_pred, average='macro')
+    test_recall = metrics.recall_score(test_true, test_pred, average='macro')
+
+    test_score_convert = [x[1] for x in test_score]
+    test_aucroc = metrics.roc_auc_score(test_true, test_score_convert, average='macro')
+
+    test_confusion_matrix = metrics.confusion_matrix(test_true, test_pred)
+
+    print("Classification Acc: %.4f, AUC-ROC: %.4f"
+          % (test_accuracy, test_aucroc))
+    print("Classification report:\n%s\n"
+          % (metrics.classification_report(test_true, test_pred, digits=3)))
+    print("Classification confusion matrix:\n%s\n"
+          % (test_confusion_matrix))
+
+    print('Saving results')
+
 
     duration = time.time() - start_time
     #print ('Epoch: %d, Mean_Cost: %.4f, Duration: %.4f, Mean_Train_Acc: %.4f, Mean_Test_Acc: %.4f'
@@ -423,7 +474,7 @@ def parse_arguments(parser):
     parser.add_argument('--sequence_length', type=int, default=28, help='')
     parser.add_argument('--class_num', type=int, default=2, help='')
     parser.add_argument('--hidden_dim', type=int, default = 32, help='')
-    parser.add_argument('--embed_dim', type=int, default=32, help='')
+    parser.add_argument('--embed_dim', type=int, default=100, help='')# 我们每个词向量为100，修改为100
     parser.add_argument('--vocab_size', type=int, default=300, help='')
     parser.add_argument('--dropout', type=int, default=0.5, help='')
     parser.add_argument('--filter_num', type=int, default=20, help='')
@@ -444,51 +495,47 @@ def parse_arguments(parser):
 
 
 #词向量转换函数
-def word2vec(post,cab,index):
-    ## 把全文综合起来，然后替换成对应词向量的索引，
+def word2vec(post, cab, index, sequence_length):
     texts = post['Title clear'] + post['News Url clear'] + post['Report Content clear']
-    text_index= []
+    text_index = []
     mask = []
-    #length = []
-    for sentence in texts:
+    discarded_indices = []  # 用于记录丢弃的索引
+
+    for idx, sentence in enumerate(texts):  # 使用 enumerate 获取索引
         sen_index = []
-        if isinstance(sentence, float):
-            print(sentence)
-            print(type(sentence))
-            sen_index.append(0)
-            text_index.append(sen_index)
-            mask_seq = np.zeros(args.sequence_len, dtype = np.float32)
-            mask_seq[1] = 0
-            mask.append(mask_seq)
+        if isinstance(sentence, float) or not sentence.strip():  # 检查是否为空句子
+            discarded_indices.append(idx)  # 记录丢弃的索引
+            continue  # 直接跳过
         else:
             sentence = sentence.split()
-            seq_len = len(sentence)
-            mask_seq = np.zeros(args.sequence_len, dtype = np.float32)
+            mask_seq = np.zeros(sequence_length, dtype=np.float32)
             mask_seq[:len(sentence)] = 1.0
             for word in sentence:
                 if word in cab:
                     word_index = index[word]
-                else :
+                else:
                     word_index = 0
                 sen_index.append(word_index)
-            while len(sen_index) < args.sequence_len:
-                word_index = 0
-                sen_index.append(word_index)
+            # 填充至 sequence_len
+            while len(sen_index) < sequence_length:
+                sen_index.append(0)  # 用 0 填充
+            sen_index = sen_index[:sequence_length]  # 截断至 sequence_len
             text_index.append(sen_index)
             mask.append(mask_seq)
 
+    return text_index, mask, discarded_indices  # 返回丢弃的索引
 
 
-    return text_index, mask
+
 
 def load_data(args):
     #加载数据，调用隔壁函数加载的是dataframe
-    #train_path, val_path,word2_path = process_data.read_data(args.text_only,32,path= '..\Data\weixin')
+    train_path, val_path,word2_path = process_data.read_data(args.text_only,32,path= '../Data/weixin')
     #print(train[4][0])
     #读取词向量
-    train_path = r'E:\fakenews\EANN_2024\Data\weixin\train.csv'
-    val_path = r'E:\fakenews\EANN_2024\Data\weixin\val.csv'
-    word2_path = r'E:\fakenews\EANN_2024\Data\weixin\word2vec.model'
+    #train_path = r'C:\Users\yjpan\Desktop\EANN_2024\Data\weixin\train.csv'
+    #val_path = r'C:\Users\yjpan\Desktop\EANN_2024\Data\weixin\val.csv'
+    #word2_path = r'C:\Users\yjpan\Desktop\EANN_2024\Data\weixin\word2vec.model'
     train = pd.read_csv(train_path,encoding = 'utf-8')
     val = pd.read_csv(val_path,encoding='utf-8')
     model = gensim.models.Word2Vec.load(word2_path)
@@ -502,13 +549,15 @@ def load_data(args):
     #数据集与词向量的转换
     #读取验证集
 
-    val_text_index, val_mask = word2vec(val,cab,index)
+    val_text_index, val_mask,discarded_indices = word2vec(val,cab,index,args.sequence_len)
+    val.drop(index = discarded_indices,errors='ignore',inplace=True)
     val['post_text_index'] = val_text_index
     val['mask'] = val_mask
     print("Val Data Size is "+str(len(val['post_text_index'])))
 
     #读取训练集
-    train_text_index, train_mask = word2vec(train,cab,index)
+    train_text_index, train_mask,discarded_indices = word2vec(train,cab,index,args.sequence_len)
+    train.drop(index = discarded_indices,errors = 'ignore',inplace=True)
     train['post_text_index'] = train_text_index
     train['mask'] = train_mask
     print("sequence length " + str(args.sequence_length))
